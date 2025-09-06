@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     const API_URL = '/api';
+    let ws;
     let currentData = {};
-
+    
     // --- Элементы DOM ---
     const elements = {
         addDonationForm: document.getElementById('add-donation-form'),
@@ -77,6 +78,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="donation-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
                 </div>
                 ${d.message ? `<p class="donation-message">${escapeHtml(d.message)}</p>` : ''}
+                <div class="donation-actions">
+                    <button class="action-btn" data-id="${d.id}" data-action="replay" title="Повторить">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                    <button class="action-btn" data-id="${d.id}" data-action="delete" title="Удалить">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
         `).join('');
     }
@@ -115,10 +124,29 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.goalTargetInput.value = currentData.goal.target_amount;
         }
         if (currentData.settings) {
-            elements.minAmountInput.value = currentData.settings.min_amount_for_alert;
+            elements.minAmountInput.value = currentData.settings.min_amount;
             elements.ttsEnabledInput.checked = currentData.settings.tts_enabled;
             elements.ttsVolumeInput.value = currentData.settings.tts_volume;
         }
+    }
+    
+    function connectWebSocket() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const user_id = document.querySelector('input[name="api-key-input"]').dataset.userId;
+        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+
+        ws.onopen = () => console.log('WebSocket соединение установлено.');
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'full_update') {
+                currentData = message.data;
+                renderAll();
+            }
+        };
+        ws.onclose = () => {
+            console.log('WebSocket соединение закрыто. Попытка переподключения...');
+            setTimeout(connectWebSocket, 3000);
+        };
     }
 
     // --- Обработчики событий ---
@@ -131,19 +159,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 amount: parseFloat(formData.get('amount')),
                 message: formData.get('message')
             };
-            const result = await fetchApi('/add_manual_donation', 'POST', data);
-            if (result && result.status === 'success') {
-                currentData.donations.unshift(result.donation); // Добавляем новый донат в начало списка
-                renderAll();
-                e.target.reset();
-            }
+            await fetchApi('/add_manual_donation', 'POST', data);
+            e.target.reset();
         });
 
         elements.goalForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
                 title: elements.goalTitleInput.value,
-                target_amount: parseFloat(elements.goalTargetInput.value)
+                target: parseFloat(elements.goalTargetInput.value)
             };
             await fetchApi('/update_goal', 'POST', data);
         });
@@ -151,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.settingsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
-                min_amount_for_alert: parseFloat(elements.minAmountInput.value),
+                min_amount: parseFloat(elements.minAmountInput.value),
                 tts_enabled: elements.ttsEnabledInput.checked,
                 tts_volume: parseFloat(elements.ttsVolumeInput.value)
             };
@@ -161,29 +185,42 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.resetDonationsBtn.addEventListener('click', async () => {
             if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
                 await fetchApi('/reset_donations', 'POST');
-                loadInitialData(); // Перезагружаем данные после сброса
             }
         });
         
-        elements.testDonationBtn.addEventListener('click', () => {
-            // TODO: Реализовать отправку тестового доната через WebSocket
-            alert('Функция тестового доната будет реализована на следующем этапе.');
+        elements.testDonationBtn.addEventListener('click', async () => {
+             await fetchApi('/test_donation', 'POST');
+        });
+
+        elements.donationsList.addEventListener('click', async (e) => {
+            const button = e.target.closest('.action-btn');
+            if (!button) return;
+            
+            const id = button.dataset.id;
+            const action = button.dataset.action;
+
+            if (action === 'delete') {
+                 if (confirm('Удалить этот донат?')) {
+                    await fetchApi(`/delete_donation/${id}`, 'POST');
+                }
+            } else if (action === 'replay') {
+                await fetchApi(`/replay_donation/${id}`, 'POST');
+            }
         });
     }
 
     // --- Инициализация ---
-    async function loadInitialData() {
+    async function init() {
+        // Загружаем начальные данные
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
             renderAll();
         }
-    }
-
-    function init() {
-        loadInitialData();
+        
+        // Подключаем WebSocket
+        connectWebSocket();
         initEventListeners();
-        // WebSocket будет добавлен на следующих этапах
     }
 
     init();
