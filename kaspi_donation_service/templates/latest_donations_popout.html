@@ -4,56 +4,94 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>История донатов</title>
-    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <style>
-        body { padding: 0; }
+        body { 
+            padding: 0; 
+            font-family: 'Inter', sans-serif;
+            background-color: #10121B;
+        }
         .widget-container { 
             border-radius: 0; 
             height: 100vh;
             border: none;
+            padding: 24px;
         }
-        #latest-donations-list {
+        .widget-title {
+            text-align: center;
+        }
+        #donations-list {
             overflow-y: auto;
-            height: calc(100vh - 120px); /* 100% высоты минус шапка */
+            max-height: calc(100vh - 120px);
+            padding-right: 15px;
+        }
+        .list-item {
+            background-color: #1A1A1A;
+            border-left: 3px solid #886CFF;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
     <div id="latest-donations-container" class="widget-container">
         <h2 class="widget-title">История донатов</h2>
-        <div id="latest-donations-list"></div>
+        <div id="donations-list">
+            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
+        </div>
     </div>
     <script>
-        function connectWebSocket() {
+        document.addEventListener('DOMContentLoaded', () => {
+            const listElement = document.getElementById('donations-list');
+
+            function updateList(donations) {
+                if(!donations || donations.length === 0) {
+                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов пока нет.</p>';
+                    return;
+                }
+
+                listElement.innerHTML = donations.map((d) => `
+                    <div class="list-item">
+                        <div class="list-item-header">
+                            <span class="list-item-name">${escapeHtml(d.name)}</span>
+                            <span class="list-item-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
+                        </div>
+                        ${d.message ? `<p class="list-item-message">${escapeHtml(d.message)}</p>` : ''}
+                    </div>
+                `).join('');
+            }
+
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            const user_id = "{{ user_id }}";
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+            
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    updateLatestDonations(message.data.donations);
+                    updateList(message.data.donations);
                 }
             };
-             ws.onclose = () => setTimeout(connectWebSocket, 3000);
-        }
-        function escapeHtml(unsafe) {
-            if(typeof unsafe !== 'string') return '';
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-        }
-        function updateLatestDonations(donations) {
-            const list = document.getElementById('latest-donations-list');
-            if(!donations || donations.length === 0) {
-                list.innerHTML = '<p style="font-size: 1.2rem; text-align: center;">Пока пусто...</p>';
-                return;
+
+            ws.onclose = () => {
+                setTimeout(() => {
+                    const newWs = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+                    newWs.onmessage = ws.onmessage;
+                    newWs.onclose = ws.onclose;
+                }, 3000);
+            };
+
+            function escapeHtml(unsafe) {
+                if(typeof unsafe !== 'string') return '';
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
             }
-            list.innerHTML = donations.map((d, index) => `
-                <div class="list-item" style="animation-delay: ${index * 50}ms">
-                    <span class="list-item-name">${escapeHtml(d.name)}</span>
-                    <span class="list-item-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
-                </div>
-            `).join('');
-        }
-        connectWebSocket();
+        });
     </script>
 </body>
 </html>
-
