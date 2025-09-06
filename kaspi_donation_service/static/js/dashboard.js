@@ -18,7 +18,8 @@ document.addEventListener('DOMContentLoaded', function() {
         goalTargetInput: document.getElementById('goal-target'),
         minAmountInput: document.getElementById('min-amount'),
         ttsEnabledInput: document.getElementById('tts-enabled'),
-        ttsVolumeInput: document.getElementById('tts-volume')
+        ttsVolumeInput: document.getElementById('tts-volume'),
+        userIdInput: document.querySelector('input[name="api-key-input"]')
     };
 
     // --- API запросы ---
@@ -131,8 +132,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function connectWebSocket() {
+        if (!elements.userIdInput) {
+            console.error('Не удалось найти user_id. WebSocket не будет подключен.');
+            return;
+        }
+        
+        const user_id = elements.userIdInput.dataset.userId;
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const user_id = document.querySelector('input[name="api-key-input"]').dataset.userId;
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
 
         ws.onopen = () => console.log('WebSocket соединение установлено.');
@@ -211,14 +217,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Инициализация ---
     async function init() {
-        // Загружаем начальные данные
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
             renderAll();
         }
         
-        // Подключаем WebSocket
         connectWebSocket();
         initEventListeners();
     }
