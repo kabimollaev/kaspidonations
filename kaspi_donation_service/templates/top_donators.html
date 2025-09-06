@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top Donators Widget</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div id="top-donators-container" class="widget-container">
+        <h2 class="widget-title">Топ донатеров</h2>
+        <div id="top-donators-list"></div>
+    </div>
+    <script>
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'full_update') {
+                    updateTopDonators(message.data.donations);
+                }
+            };
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+        }
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+        function updateTopDonators(donations) {
+            const list = document.getElementById('top-donators-list');
+            const topDonators = donations.reduce((acc, d) => {
+                acc[d.name] = (acc[d.name] || 0) + d.amount;
+                return acc;
+            }, {});
+            const sortedTop = Object.entries(topDonators).sort(([, a], [, b]) => b - a).slice(0, 5);
+            if(sortedTop.length === 0) {
+                list.innerHTML = '<p style="font-size: 1.2rem; text-align: center;">Пока пусто...</p>';
+                return;
+            }
+            list.innerHTML = sortedTop.map((item, index) => `
+                <div class="list-item" style="animation-delay: ${index * 100}ms">
+                    <span class="list-item-name">${escapeHtml(item[0])}</span>
+                    <span class="list-item-amount">${item[1].toLocaleString('ru-RU')} ₸</span>
+                </div>
+            `).join('');
+        }
+        connectWebSocket();
+    </script>
+</body>
+</html>
+

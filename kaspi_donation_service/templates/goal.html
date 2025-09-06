@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goal Widget</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div id="goal-container" class="widget-container">
+        <h2 id="goal-title" class="widget-title"></h2>
+        <div class="goal-info">
+            <span id="goal-percentage">0%</span>
+        </div>
+        <div class="goal-progress-bar">
+            <div id="goal-progress" class="goal-progress" style="width: 0%;"></div>
+        </div>
+        <div class="goal-details">
+            <span id="goal-current">Собрано: 0 ₸</span>
+            <span id="goal-target">Цель: 0 ₸</span>
+        </div>
+    </div>
+    <script>
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'full_update') {
+                    updateGoal(message.data.goal);
+                }
+            };
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+        }
+        function updateGoal(goal) {
+            document.getElementById('goal-title').textContent = goal.title;
+            const current = goal.current;
+            const target = goal.target;
+            const percentage = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+            document.getElementById('goal-current').textContent = `Собрано: ${current.toLocaleString('ru-RU')} ₸`;
+            document.getElementById('goal-target').textContent = `Цель: ${target.toLocaleString('ru-RU')} ₸`;
+            document.getElementById('goal-percentage').textContent = `${Math.floor(percentage)}%`;
+            document.getElementById('goal-progress').style.width = `${percentage}%`;
+        }
+        connectWebSocket();
+    </script>
+</body>
+</html>
+
