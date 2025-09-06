@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Панель администратора{% endblock %}
+
+{% block head_extra %}
+    <!-- --- ИЗМЕНЕНИЕ --- -->
+    <!-- Добавляем "cache_buster", чтобы браузер гарантированно загрузил новую версию стилей -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css', v=cache_buster) }}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Панель администратора</h1>
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Имя пользователя</th>
+                <th>Роль</th>
+                <th>Статус</th>
+                <th>Действие</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <form action="{{ url_for('update_user', user_id=u.id) }}" method="post">
+                    <td>
+                        <select name="role" class="form-control">
+                            <option value="user" {% if u.role == 'user' %}selected{% endif %}>User</option>
+                            <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="status" class="form-control">
+                            <option value="active" {% if u.status == 'active' %}selected{% endif %}>Active</option>
+                            <option value="inactive" {% if u.status == 'inactive' %}selected{% endif %}>Inactive</option>
+                        </select>
+                    </td>
+                    <td>
+                        <button type="submit" class="btn-update">Обновить</button>
+                    </td>
+                </form>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{{ url_for('dashboard') }}" class="back-link">Вернуться в панель управления</a>
+</div>
+{% endblock %}
+

@@ -1,0 +1,314 @@
+/* Общие стили для панели управления */
+body {
+    background-color: #10121B; /* Темный фон */
+}
+
+.dashboard-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 20px 40px;
+    color: #E0E0E0;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    margin-bottom: 30px;
+    border-bottom: 1px solid rgba(136, 108, 255, 0.2);
+}
+
+.dashboard-header h1 {
+    font-size: 2.2rem;
+    font-weight: 900;
+    margin: 0;
+    background: linear-gradient(90deg, #886CFF, #6DD5FA);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.user-info span, .user-info a {
+    font-size: 0.9rem;
+    color: #A0AEC0;
+    text-decoration: none;
+}
+
+.user-info a:hover {
+    color: #fff;
+}
+
+.admin-link {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+
+/* Секция API ключа */
+.api-key-section {
+    background: rgba(23, 26, 40, 0.8);
+    border: 1px solid rgba(136, 108, 255, 0.15);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 30px;
+}
+
+.api-key-section h3 {
+    margin-top: 0;
+    font-size: 1.2rem;
+}
+
+.api-key-section input {
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 1px solid #333;
+}
+
+.api-key-section p {
+    font-size: 0.85rem;
+    color: #A0AEC0;
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+
+
+/* --- ИСПРАВЛЕННАЯ СТРУКТУРА СЕТКИ --- */
+.main-grid {
+    display: grid;
+    /* Явное определение областей для колонок */
+    grid-template-areas: "left main right";
+    /* Определение размеров колонок */
+    grid-template-columns: 300px 1fr 400px;
+    gap: 30px;
+    width: 100%; /* Убедимся, что сетка занимает всю ширину контейнера */
+}
+
+.left-column { grid-area: left; }
+.main-content { grid-area: main; }
+.right-column { grid-area: right; }
+
+/* Стили карточек */
+.card {
+    background: rgba(23, 26, 40, 0.8);
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(136, 108, 255, 0.15);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.card + .card {
+    margin-top: 30px;
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 20px 0;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(136, 108, 255, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Формы */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: #A0AEC0;
+}
+
+input[type="text"],
+input[type="number"],
+textarea {
+    width: 100%;
+    padding: 12px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #E0E0E0;
+    font-size: 1rem;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: #886CFF;
+    box-shadow: 0 0 10px rgba(136, 108, 255, 0.3);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+/* Кнопки */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-grow: 1;
+    text-align: center;
+}
+
+.btn-primary {
+    background: linear-gradient(90deg, #886CFF, #6345ED);
+    color: white;
+    box-shadow: 0 4px 15px rgba(136, 108, 255, 0.3);
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(136, 108, 255, 0.4);
+}
+
+.btn-secondary {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+.btn-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-danger {
+    background-color: #E53935;
+    color: white;
+}
+.btn-danger:hover {
+    background-color: #C62828;
+    transform: translateY(-2px);
+}
+
+/* Списки донатов */
+.donations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px; /* для скроллбара */
+}
+
+.donation-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    border-left: 3px solid #886CFF;
+}
+.donation-item-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+.donation-name {
+    word-break: break-all;
+}
+.donation-amount {
+    color: #6DD5FA;
+    white-space: nowrap;
+    margin-left: 10px;
+}
+.donation-message {
+    font-size: 0.9rem;
+    color: #A0AEC0;
+    margin: 5px 0 0 0;
+    word-break: break-word;
+}
+
+/* Checkbox & Range */
+.checkbox-group {
+    display: flex;
+    align-items: center;
+}
+.styled-checkbox { display: none; }
+.checkbox-label {
+    position: relative;
+    padding-left: 30px;
+    cursor: pointer;
+    user-select: none;
+}
+.checkbox-label::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border: 2px solid #555;
+    border-radius: 4px;
+    background-color: rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
+}
+.checkbox-label::after {
+    content: '✔';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%) scale(0.5);
+    font-size: 16px;
+    color: #886CFF;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+.styled-checkbox:checked + .checkbox-label::before {
+    background-color: rgba(136, 108, 255, 0.2);
+    border-color: #886CFF;
+}
+.styled-checkbox:checked + .checkbox-label::after {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type=range]:focus {
+  outline: none;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  cursor: pointer;
+  background: #333;
+  border-radius: 4px;
+}
+input[type=range]::-webkit-slider-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #886CFF;
+  cursor: pointer;
+  -webkit-appearance: none;
+  margin-top: -6px;
+  box-shadow: 0 0 10px rgba(136, 108, 255, 0.5);
+}
+

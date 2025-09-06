@@ -1,0 +1,91 @@
+/* Стили для панели администратора */
+body {
+    background-color: #10121B;
+    font-family: 'Inter', sans-serif;
+    color: #E0E0E0;
+    margin: 0;
+    padding: 30px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+h1 {
+    text-align: center;
+    font-size: 2.5rem;
+    font-weight: 900;
+    margin-bottom: 40px;
+    background: linear-gradient(90deg, #886CFF, #6DD5FA);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.user-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(23, 26, 40, 0.8);
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(136, 108, 255, 0.15);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.user-table th, .user-table td {
+    padding: 15px 20px;
+    text-align: left;
+}
+
+.user-table thead {
+    background-color: rgba(136, 108, 255, 0.1);
+}
+
+.user-table th {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #fff;
+}
+
+.user-table tbody tr {
+    border-bottom: 1px solid rgba(136, 108, 255, 0.1);
+}
+
+.user-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.form-control {
+    padding: 8px 12px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #E0E0E0;
+    font-size: 0.9rem;
+}
+
+.btn-update {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: linear-gradient(90deg, #886CFF, #6345ED);
+    color: white;
+    transition: transform 0.2s ease;
+}
+
+.btn-update:hover {
+    transform: translateY(-2px);
+}
+
+.back-link {
+    display: block;
+    text-align: center;
+    margin-top: 30px;
+    color: #886CFF;
+    text-decoration: none;
+    font-weight: 500;
+}
