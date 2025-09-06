@@ -160,7 +160,6 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Проверяем и создаем Goal и Settings, если их нет
     if not current_user.goal:
         user_goal = Goal(user_id=current_user.id)
         db.session.add(user_goal)
@@ -211,10 +210,6 @@ def before_request_api():
 @app.route('/api/get_all_data', methods=['GET'])
 @login_required
 def get_all_data():
-    """
-    Собирает все данные пользователя (донаты, цель, настройки)
-    и возвращает их в одном JSON-ответе.
-    """
     user_id = g.user.id if g.user else current_user.id
     donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).all()
     goal = Goal.query.filter_by(user_id=user_id).first()
@@ -250,9 +245,6 @@ def get_all_data():
 
 @app.route('/api/submit_donation', methods=['POST'])
 def submit_donation():
-    """
-    Принимает донат от локального агента, проверяет API-ключ и добавляет в базу.
-    """
     if not g.user:
         return jsonify({"status": "error", "message": "Неверный API-ключ."}), 401
     
@@ -291,7 +283,6 @@ def submit_donation():
     
     return jsonify({"status": "success", "message": "Донат успешно добавлен."}), 200
 
-
 @app.route('/api/update_goal', methods=['POST'])
 @login_required
 def update_goal():
@@ -308,7 +299,6 @@ def update_goal():
     
     broadcast(get_full_update_message(user_id), user_id)
     return jsonify({"status": "success", "message": "Цель обновлена."})
-
 
 @app.route('/api/update_settings', methods=['POST'])
 @login_required
@@ -390,7 +380,6 @@ def test_donation():
     
     settings = Settings.query.filter_by(user_id=user_id).first()
     if settings and settings.tts_enabled and amount >= settings.min_amount:
-        # TODO: Реализовать логику для TTS
         pass
     
     return jsonify({"status": "success", "message": "Тестовый донат отправлен."})
