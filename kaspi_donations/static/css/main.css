@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap');
+
+/* --- ОБЩИЕ СТИЛИ ДЛЯ ВСЕХ ВИДЖЕТОВ --- */
+body {
+    background-color: transparent !important;
+    font-family: 'Inter', sans-serif;
+    color: #EAEAEA;
+    margin: 0;
+    padding: 20px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.widget-container {
+    background: rgba(23, 26, 40, 0.85); /* Фон как у карточек на панели */
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(136, 108, 255, 0.15); /* Обводка как у карточек */
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    box-sizing: border-box;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeIn 0.8s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.widget-title {
+    font-size: 2rem; /* Увеличен заголовок (32px) */
+    font-weight: 900;
+    margin: 0 0 24px 0;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(136, 108, 255, 0.2); /* Разделитель как на панели */
+    color: #FFFFFF;
+}
+
+/* --- СТИЛИ ДЛЯ СПИСКОВ (ТОП И ПОСЛЕДНИЕ) --- */
+.list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.6rem; /* Увеличен основной текст (25.6px) */
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    transform: translateX(20px);
+    opacity: 0;
+    animation: slideIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.list-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.list-item:first-child {
+    padding-top: 0;
+}
+
+.list-item-name {
+    font-weight: 700;
+    color: #FFFFFF;
+}
+
+.list-item-amount {
+    font-weight: 700;
+    color: #6DD5FA; /* Цвет как на панели */
+    text-shadow: 0 0 10px rgba(109, 213, 250, 0.4);
+}
+
+@keyframes slideIn {
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* --- СТИЛИ ДЛЯ СБОРА СРЕДСТВ --- */
+.goal-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.4rem; /* Увеличен текст (22.4px) */
+    font-weight: 700;
+    margin-bottom: 18px;
+    color: #FFFFFF;
+}
+
+.goal-progress-bar {
+    width: 100%;
+    height: 12px;
+    background-color: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 18px;
+}
+
+.goal-progress {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #886CFF, #6DD5FA); /* Градиент как на панели */
+    border-radius: 6px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 15px rgba(136, 108, 255, 0.5);
+}
+
+.goal-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.1rem; /* Увеличен текст (17.6px) */
+    font-weight: 500;
+    color: #A0AEC0;
+}
+

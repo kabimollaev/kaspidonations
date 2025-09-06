@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Goal Widget</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        body { background-color: transparent; font-family: var(--font-family); color: var(--text-primary); }
+        .goal-widget {
+            width: 100%;
+            background: rgba(37, 40, 52, 0.9);
+            border-radius: 10px;
+            padding: 1rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .goal-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 0.8rem;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 30px;
+            background-color: var(--bg-tertiary);
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-image: linear-gradient(45deg, var(--gradient-start), var(--gradient-end));
+            transition: width 0.5s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .goal-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        .current-amount { color: #fff; font-weight: 600; }
+        .target-amount { color: #fff; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="goal-widget">
+        <div id="goal-title" class="goal-title">Загрузка...</div>
+        <div class="progress-bar-container">
+            <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <div class="goal-text">
+            <span>Собрано: <span id="current-amount" class="current-amount">0</span> KZT</span>
+            <span>Цель: <span id="target-amount" class="target-amount">0</span> KZT</span>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const goalTitle = document.getElementById('goal-title');
+            const progressBar = document.getElementById('progress-bar');
+            const currentAmount = document.getElementById('current-amount');
+            const targetAmount = document.getElementById('target-amount');
+
+            function updateGoal(data) {
+                const goal = data.goal;
+                const percentage = goal.target > 0 ? (goal.current / goal.target) * 100 : 0;
+                
+                goalTitle.textContent = goal.title;
+                currentAmount.textContent = parseInt(goal.current);
+                targetAmount.textContent = parseInt(goal.target);
+                
+                progressBar.style.width = `${Math.min(percentage, 100)}%`;
+                progressBar.textContent = `${Math.round(percentage)}%`;
+            }
+
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'full_update') {
+                    updateGoal(msg.data);
+                }
+            };
+        });
+    </script>
+</body>
+</html>
+
