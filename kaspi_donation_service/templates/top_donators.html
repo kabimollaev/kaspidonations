@@ -2,50 +2,75 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Top Donators Widget</title>
-    <link rel="stylesheet" href="/static/css/main.css">
+    <title>Топ донатеров</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
-    <div id="top-donators-container" class="widget-container">
-        <h2 class="widget-title">Топ донатеров</h2>
-        <div id="top-donators-list"></div>
+    <div class="widget-container">
+        <h3 class="widget-title">Топ донатеров</h3>
+        <div id="donators-list">
+            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
+        </div>
     </div>
+
     <script>
-        function connectWebSocket() {
+        document.addEventListener('DOMContentLoaded', () => {
+            const listElement = document.getElementById('donators-list');
+
+            function updateList(donations) {
+                const topDonators = donations.reduce((acc, d) => {
+                    acc[d.name] = (acc[d.name] || 0) + d.amount;
+                    return acc;
+                }, {});
+
+                const sorted = Object.entries(topDonators)
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 10);
+
+                if (sorted.length === 0) {
+                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов пока нет.</p>';
+                    return;
+                }
+                
+                listElement.innerHTML = sorted.map(([name, amount]) => `
+                    <div class="list-item">
+                        <span class="list-item-name">${escapeHtml(name)}</span>
+                        <span class="list-item-amount">${amount.toLocaleString('ru-RU')} ₸</span>
+                    </div>
+                `).join('');
+            }
+
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            const user_id = "{{ user_id }}";
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+            
             ws.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                if (message.type === 'full_update') {
-                    updateTopDonators(message.data.donations);
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'full_update') {
+                    updateList(msg.data.donations);
                 }
             };
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
-        }
-        function escapeHtml(unsafe) {
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-        }
-        function updateTopDonators(donations) {
-            const list = document.getElementById('top-donators-list');
-            const topDonators = donations.reduce((acc, d) => {
-                acc[d.name] = (acc[d.name] || 0) + d.amount;
-                return acc;
-            }, {});
-            const sortedTop = Object.entries(topDonators).sort(([, a], [, b]) => b - a).slice(0, 5);
-            if(sortedTop.length === 0) {
-                list.innerHTML = '<p style="font-size: 1.2rem; text-align: center;">Пока пусто...</p>';
-                return;
+            
+            ws.onclose = () => {
+                setTimeout(() => {
+                    const newWs = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+                    newWs.onmessage = ws.onmessage;
+                    newWs.onclose = ws.onclose;
+                }, 3000);
+            };
+            
+            function escapeHtml(unsafe) {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
             }
-            list.innerHTML = sortedTop.map((item, index) => `
-                <div class="list-item" style="animation-delay: ${index * 100}ms">
-                    <span class="list-item-name">${escapeHtml(item[0])}</span>
-                    <span class="list-item-amount">${item[1].toLocaleString('ru-RU')} ₸</span>
-                </div>
-            `).join('');
-        }
-        connectWebSocket();
+        });
     </script>
 </body>
 </html>
-
