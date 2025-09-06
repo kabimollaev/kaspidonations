@@ -25,7 +25,7 @@ if not API_KEY:
 
 # Адрес основного веб-сервиса, куда будут отправляться донаты
 # TODO: Замените на реальный адрес сервера после развертывания (например, https://<ваше_приложение>.onrender.com)
-SERVER_URL = "http://127.0.0.1:5000"
+SERVER_URL = "SERVER_URL = "https://kaspidonations.onrender.com"
 SUBMIT_DONATION_ENDPOINT = f"{SERVER_URL}/api/submit_donation"
 
 # Глобальные переменные
@@ -244,3 +244,4 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print("\nЗавершение работы...")
             break
+
