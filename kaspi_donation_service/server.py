@@ -160,6 +160,7 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # Проверяем и создаем Goal и Settings, если их нет
     if not current_user.goal:
         user_goal = Goal(user_id=current_user.id)
         db.session.add(user_goal)
