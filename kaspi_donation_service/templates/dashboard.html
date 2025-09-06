@@ -1,130 +1,143 @@
-{% extends "base.html" %}
-{% block title %}Панель управления{% endblock %}
-
-{% block head_extra %}
-    <!-- --- ИЗМЕНЕНИЕ --- -->
-    <!-- Диагностический код убран. Теперь здесь только нужные стили. -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления донатами</title>
+    <!-- Подключаем стили для панели -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-{% endblock %}
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script> 
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Панель управления донатами</h1>
+            <div class="user-info">
+                <span>Пользователь: <strong>{{ user.username }}</strong></span>
+                {% if user.role == 'admin' %}
+                <a href="{{ url_for('admin_panel') }}" class="admin-link">Панель администратора</a>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
+            </div>
+        </header>
 
-{% block content %}
-<div class="dashboard-container">
-    <header class="dashboard-header">
-        <h1>Панель управления донатами</h1>
-        <div class="user-info">
-            <span>Пользователь: <strong>{{ user.username }}</strong></span>
-            {% if user.role == 'admin' %}
-            <a href="{{ url_for('admin_panel') }}" class="admin-link">Панель администратора</a>
-            {% endif %}
-            <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
+        <div class="api-key-section">
+            <h3>Ваш персональный API ключ (для "Агента")</h3>
+            <input type="text" value="{{ user.api_key }}" readonly>
+            <p>Этот ключ понадобится для настройки локального "Агента", который будет отслеживать уведомления на вашем ПК.</p>
         </div>
-    </header>
+        
+        <main class="main-grid">
+            <aside class="left-column">
+                <div class="card">
+                    <h3 class="card-title">Ссылки на виджеты для OBS</h3>
+                    <div class="widget-links">
+                        <div class="form-group">
+                            <label for="alert-url">Оповещение:</label>
+                            <input type="text" id="alert-url" value="{{ url_for('alert_widget', user_id=user.id) }}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="goal-url">Сбор средств:</label>
+                            <input type="text" id="goal-url" value="{{ url_for('goal_widget', user_id=user.id) }}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="top-donators-url">Топ донатеров:</label>
+                            <input type="text" id="top-donators-url" value="{{ url_for('top_donators_widget', user_id=user.id) }}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="latest-donations-url">Последние донаты:</label>
+                            <input type="text" id="latest-donations-url" value="{{ url_for('latest_donations_widget', user_id=user.id) }}" readonly>
+                        </div>
+                    </div>
+                </div>
+                 <div class="card">
+                    <h3 class="card-title">Инструменты</h3>
+                    <div class="form-actions">
+                         <button id="test-donation-btn" class="btn btn-secondary">Тестовый донат</button>
+                         <button id="reset-donations-btn" class="btn btn-danger">Сбросить донаты</button>
+                    </div>
+                </div>
+            </aside>
     
-    <div class="api-key-section">
-        <h3>Ваш персональный API ключ (для "Агента")</h3>
-        <input type="text" value="{{ user.api_key }}" readonly>
-        <p>Этот ключ понадобится для настройки локального "Агента", который будет отслеживать уведомления на вашем ПК.</p>
+            <section class="main-content">
+                <div class="card">
+                    <h3 class="card-title">Ручное добавление</h3>
+                    <form id="add-donation-form">
+                        <div class="form-group">
+                            <label for="name">Имя</label>
+                            <input type="text" id="name" name="name" placeholder="Аноним">
+                        </div>
+                        <div class="form-group">
+                            <label for="amount">Сумма</label>
+                            <input type="number" id="amount" name="amount" required step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Сообщение</label>
+                            <textarea id="message" name="message" rows="2"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Добавить донат</button>
+                    </form>
+                </div>
+    
+                <div class="card">
+                    <h3 class="card-title">Настройки сбора</h3>
+                    <form id="goal-form">
+                        <div class="form-group">
+                            <label for="goal-title">Заголовок</label>
+                            <input type="text" id="goal-title" name="goal-title">
+                        </div>
+                        <div class="form-group">
+                            <label for="goal-target">Цель</label>
+                            <input type="number" id="goal-target" name="goal-target" step="0.01">
+                        </div>
+                         <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Сохранить</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h3 class="card-title">Общие настройки</h3>
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label for="min-amount">Мин. сумма для оповещения</label>
+                            <input type="number" id="min-amount" name="min-amount" step="0.01">
+                        </div>
+                         <div class="form-group checkbox-group">
+                            <input type="checkbox" id="tts-enabled" name="tts-enabled" class="styled-checkbox">
+                            <label for="tts-enabled" class="checkbox-label">Включить озвучивание (TTS)</label>
+                        </div>
+                        <div class="form-group">
+                            <label for="tts-volume">Громкость TTS (0.1 - 1.0)</label>
+                            <input type="range" id="tts-volume" name="tts-volume" min="0.1" max="1" step="0.1">
+                        </div>
+                         <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Сохранить</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+    
+            <aside class="right-column">
+                <div class="card">
+                    <h3 class="card-title">
+                        История донатов
+                    </h3>
+                    <div id="donations-list" class="donations-list">
+                        <p>Загрузка...</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="card-title">Топ донатеров</h3>
+                    <div id="top-donators-list" class="donations-list">
+                       <p>Загрузка...</p>
+                    </div>
+                </div>
+            </aside>
+        </main>
     </div>
-
-    <main class="main-grid">
-        <aside class="left-column">
-            <div class="card">
-                <h3 class="card-title">Ссылки на виджеты для OBS</h3>
-                <div class="widget-links">
-                    <!-- Ссылки будут добавлены на 4-м этапе -->
-                     <p>Публичные ссылки на виджеты (оповещения, сбор средств и т.д.) появятся здесь после развертывания сервиса.</p>
-                </div>
-            </div>
-             <div class="card">
-                <h3 class="card-title">Инструменты</h3>
-                <div class="form-actions">
-                     <button id="test-donation-btn" class="btn btn-secondary">Тестовый донат</button>
-                     <button id="reset-donations-btn" class="btn btn-danger">Сбросить донаты</button>
-                </div>
-            </div>
-        </aside>
-
-        <section class="main-content">
-            <div class="card">
-                <h3 class="card-title">Ручное добавление</h3>
-                <form id="add-donation-form">
-                    <div class="form-group">
-                        <label for="name">Имя</label>
-                        <input type="text" id="name" name="name" placeholder="Аноним">
-                    </div>
-                    <div class="form-group">
-                        <label for="amount">Сумма</label>
-                        <input type="number" id="amount" name="amount" required step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label for="message">Сообщение</label>
-                        <textarea id="message" name="message" rows="2"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Добавить донат</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <h3 class="card-title">Настройки сбора</h3>
-                <form id="goal-form">
-                    <div class="form-group">
-                        <label for="goal-title">Заголовок</label>
-                        <input type="text" id="goal-title" name="goal-title">
-                    </div>
-                    <div class="form-group">
-                        <label for="goal-target">Цель</label>
-                        <input type="number" id="goal-target" name="goal-target" step="0.01">
-                    </div>
-                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-            
-            <div class="card">
-                <h3 class="card-title">Общие настройки</h3>
-                <form id="settings-form">
-                    <div class="form-group">
-                        <label for="min-amount">Мин. сумма для оповещения</label>
-                        <input type="number" id="min-amount" name="min-amount" step="0.01">
-                    </div>
-                     <div class="form-group checkbox-group">
-                        <input type="checkbox" id="tts-enabled" name="tts-enabled" class="styled-checkbox">
-                        <label for="tts-enabled" class="checkbox-label">Включить озвучивание (TTS)</label>
-                    </div>
-                    <div class="form-group">
-                        <label for="tts-volume">Громкость TTS (0.1 - 1.0)</label>
-                        <input type="range" id="tts-volume" name="tts-volume" min="0.1" max="1" step="0.1">
-                    </div>
-                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-        </section>
-
-        <aside class="right-column">
-            <div class="card">
-                <h3 class="card-title">
-                    История донатов
-                </h3>
-                <div id="donations-list" class="donations-list">
-                    <p>Загрузка...</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="card-title">Топ донатеров</h3>
-                <div id="top-donators-list" class="donations-list">
-                   <p>Загрузка...</p>
-                </div>
-            </div>
-        </aside>
-    </main>
-</div>
-{% endblock %}
-
-{% block scripts_extra %}
+    {% block scripts_extra %}
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-{% endblock %}
-
+    {% endblock %}
+</body>
+</html>

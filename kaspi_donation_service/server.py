@@ -1,10 +1,12 @@
 import time
 import uuid
 import os
+import json
 from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_sock import Sock
 
 # --- Настройка путей ---
 # Устанавливаем базовую директорию проекта
@@ -23,6 +25,10 @@ os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# Инициализация WebSocket
+sock = Sock(app)
+app.clients = set()
 
 # --- Модели Базы Данных ---
 
@@ -68,6 +74,34 @@ def load_user(user_id):
 @app.context_processor
 def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
+
+# --- Функции для WebSocket ---
+def broadcast(data, user_id):
+    """Отправляет данные всем клиентам WebSocket данного пользователя."""
+    message = json.dumps(data, ensure_ascii=False)
+    for ws in app.clients:
+        if hasattr(ws, 'user_id') and ws.user_id == user_id:
+            try:
+                ws.send(message)
+            except Exception as e:
+                print(f"❌ Не удалось отправить WebSocket сообщение: {e}")
+
+def get_full_update_message(user_id):
+    """Формирует полное сообщение-обновление для виджетов."""
+    donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).all()
+    goal = Goal.query.filter_by(user_id=user_id).first()
+    settings = Settings.query.filter_by(user_id=user_id).first()
+
+    donations_list = [
+        {'id': int(d.id), 'name': d.name, 'amount': float(d.amount), 'message': d.message}
+        for d in donations
+    ]
+    
+    goal_data = {'title': goal.title, 'current': float(goal.current_amount), 'target': float(goal.target_amount)} if goal else {}
+    settings_data = {'min_amount': float(settings.min_amount), 'tts_enabled': settings.tts_enabled, 'tts_volume': float(settings.tts_volume)} if settings else {}
+
+    return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data}}
+
 
 # --- Маршруты Аутентификации и Основные страницы ---
 
@@ -130,6 +164,15 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # Проверяем и создаем Goal и Settings, если их нет
+    if not current_user.goal:
+        user_goal = Goal(user_id=current_user.id)
+        db.session.add(user_goal)
+        db.session.commit()
+    if not current_user.settings:
+        user_settings = Settings(user_id=current_user.id)
+        db.session.add(user_settings)
+        db.session.commit()
     return render_template('dashboard.html', user=current_user)
 
 @app.route('/admin')
@@ -157,34 +200,30 @@ def update_user(user_id):
 
 @app.before_request
 def before_request_api():
-    if request.path.startswith('/api'):
-        g.user = None
-        api_key = request.headers.get('X-API-Key')
-        if not api_key:
-            api_key = request.args.get('api_key')
-        
+    g.user = None
+    if request.path.startswith('/api/submit_donation'):
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
         if api_key:
             user = User.query.filter_by(api_key=api_key).first()
             if user:
                 g.user = user
-
-def api_login_required(f):
-    @login_required
-    def decorated_function(*args, **kwargs):
-        return f(*args, **kwargs)
-    return decorated_function
+    elif request.path.startswith('/api/'):
+        if not current_user.is_authenticated:
+            return jsonify({"status": "error", "message": "Доступ запрещен. Требуется аутентификация."}), 401
+        g.user = current_user
 
 # --- ИСПРАВЛЕНИЕ: Добавлен недостающий API-маршрут ---
 @app.route('/api/get_all_data', methods=['GET'])
-@api_login_required
+@login_required
 def get_all_data():
     """
     Собирает все данные пользователя (донаты, цель, настройки)
     и возвращает их в одном JSON-ответе.
     """
-    donations = Donation.query.filter_by(user_id=current_user.id).order_by(Donation.timestamp.desc()).all()
-    goal = Goal.query.filter_by(user_id=current_user.id).first()
-    settings = Settings.query.filter_by(user_id=current_user.id).first()
+    user_id = g.user.id if g.user else current_user.id
+    donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).all()
+    goal = Goal.query.filter_by(user_id=user_id).first()
+    settings = Settings.query.filter_by(user_id=user_id).first()
     
     donations_list = [
         {
@@ -214,11 +253,96 @@ def get_all_data():
         'settings': settings_data
     })
 
+@app.route('/api/submit_donation', methods=['POST'])
+def submit_donation():
+    """
+    Принимает донат от локального агента, проверяет API-ключ и добавляет в базу.
+    """
+    if not g.user:
+        return jsonify({"status": "error", "message": "Неверный API-ключ."}), 401
+    
+    data = request.get_json()
+    if not data or 'name' not in data or 'amount' not in data:
+        return jsonify({"status": "error", "message": "Отсутствуют обязательные поля."}), 400
+    
+    user_id = g.user.id
+    name = data['name']
+    amount = float(data['amount'])
+    message = data.get('message', '')
+
+    new_donation = Donation(
+        name=name,
+        amount=amount,
+        message=message,
+        user_id=user_id
+    )
+
+    db.session.add(new_donation)
+    
+    # Обновляем текущую сумму сбора
+    goal = Goal.query.filter_by(user_id=user_id).first()
+    if not goal:
+        goal = Goal(user_id=user_id)
+        db.session.add(goal)
+
+    goal.current_amount += amount
+    
+    db.session.commit()
+    
+    # Отправляем оповещение на виджеты через WebSocket
+    broadcast(get_full_update_message(user_id), user_id)
+    
+    settings = Settings.query.filter_by(user_id=user_id).first()
+    if settings and settings.tts_enabled and amount >= settings.min_amount:
+        # TODO: Логика TTS будет реализована после развертывания
+        # Здесь мы можем отправить сообщение для TTS на фронтенд,
+        # который будет обрабатывать его через API
+        pass
+    
+    return jsonify({"status": "success", "message": "Донат успешно добавлен."}), 200
+
+# --- Маршруты для виджетов ---
+@app.route('/alert/<int:user_id>')
+def alert_widget(user_id):
+    return render_template('alert.html', user_id=user_id)
+
+@app.route('/goal/<int:user_id>')
+def goal_widget(user_id):
+    return render_template('goal.html', user_id=user_id)
+
+@app.route('/latest_donations/<int:user_id>')
+def latest_donations_widget(user_id):
+    return render_template('latest_donations.html', user_id=user_id)
+    
+@app.route('/top_donators/<int:user_id>')
+def top_donators_widget(user_id):
+    return render_template('top_donators.html', user_id=user_id)
+
+# WebSocket
+@sock.route('/ws')
+def ws_route(ws):
+    # Привязываем WebSocket-соединение к текущему пользователю
+    user_id = request.args.get('user_id')
+    if not user_id:
+        ws.close()
+        return
+
+    try:
+        ws.user_id = int(user_id)
+        app.clients.add(ws)
+        ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
+        while True:
+            data = ws.receive()
+            if data is None: 
+                break
+    except Exception:
+        pass
+    finally:
+        app.clients.remove(ws)
+
 
 # --- Запуск приложения ---
-
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=5000, debug=True)
-

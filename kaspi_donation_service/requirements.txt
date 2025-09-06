@@ -2,3 +2,5 @@ Flask
 Flask-Login
 Werkzeug
 Flask-SQLAlchemy
+Flask-Sock
+gunicorn

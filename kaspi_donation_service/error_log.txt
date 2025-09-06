@@ -6,4 +6,18 @@ Press CTRL+C to quit
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 606-572-320
+127.0.0.1 - - [07/Sep/2025 01:55:42] "GET / HTTP/1.1" 302 -
+D:\donation\kaspi_donation_service\server.py:72: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return User.query.get(int(user_id))
+127.0.0.1 - - [07/Sep/2025 01:55:42] "GET /login HTTP/1.1" 302 -
+127.0.0.1 - - [07/Sep/2025 01:55:42] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:55:42] "GET /static/js/dashboard.js HTTP/1.1" 304 -
+127.0.0.1 - - [07/Sep/2025 01:55:42] "GET /static/css/dashboard.css?v=1757192142 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:55:43] "GET /api/get_all_data HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:56:07] "POST /api/submit_donation HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:56:13] "POST /api/submit_donation HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:56:18] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:56:18] "GET /static/css/dashboard.css?v=1757192178 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 01:56:18] "GET /static/js/dashboard.js HTTP/1.1" 304 -
+127.0.0.1 - - [07/Sep/2025 01:56:18] "GET /api/get_all_data HTTP/1.1" 200 -
 ^C
