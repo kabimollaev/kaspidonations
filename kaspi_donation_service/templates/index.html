@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css', v=cache_buster) }}">
 </head>
 <body>
 
@@ -30,8 +30,8 @@
         <section class="hero">
             <div class="container">
                 <h1>Принимайте донаты с Kaspi.kz прямо на стриме</h1>
-                <p class="subtitle">Мгновенные оповещения, гибкая настройка виджетов и голосовое озвучивание донатов для вашей трансляции на Twitch, YouTube и других площадках.</p>
-                <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Начать использовать бесплатно</a>
+                <p class="subtitle">Увеличьте интерактивность ваших трансляций с помощью мгновенных оповещений, гибко настраиваемых виджетов и голосового озвучивания донатов с Kaspi.</p>
+                <a href="#pricing" class="btn btn-primary btn-lg">Узнать больше</a>
             </div>
         </section>
 
@@ -41,23 +41,23 @@
                 <div class="features-grid">
                     <div class="feature-card">
                         <div class="feature-icon">🖥️</div>
-                        <h3>Интеграция с OBS и XSplit</h3>
-                        <p>Просто добавьте виджеты как источник "Браузер" в вашу программу для стриминга и начните получать оповещения.</p>
+                        <h3>Простая интеграция с OBS</h3>
+                        <p>Наши виджеты легко добавляются в OBS, XSplit и другие программы для стриминга как источник "Браузер". Настройка занимает меньше минуты.</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🔔</div>
                         <h3>Мгновенные оповещения</h3>
-                        <p>Наш Windows-агент отслеживает уведомления от приложения "Связь с телефоном" и моментально отправляет их на стрим.</p>
+                        <p>Специальное приложение для ПК отслеживает уведомления от "Связь с телефоном" и моментально отправляет их на стрим без задержек.</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🎨</div>
                         <h3>Настраиваемые виджеты</h3>
-                        <p>Управляйте внешним видом оповещений, полосы сбора средств, списками последних и лучших донатеров.</p>
+                        <p>Управляйте внешним видом оповещений, полосой сбора средств, а также списками последних и лучших донатеров через удобную панель.</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🔊</div>
                         <h3>Голосовое озвучивание (TTS)</h3>
-                        <p>Включите автоматическое зачитывание сообщений донатеров приятным голосом, чтобы не отвлекаться от игры.</p>
+                        <p>Включите автоматическое зачитывание сообщений донатеров, чтобы не отвлекаться от игры и уделить внимание каждому зрителю.</p>
                     </div>
                 </div>
             </div>
@@ -68,13 +68,13 @@
                 <h2>Простая и понятная цена</h2>
                 <div class="pricing-card">
                     <h3>Полный доступ</h3>
-                    <div class="price">1500₸ <span>/ месяц</span></div>
-                    <p>Получите доступ ко всем текущим и будущим функциям сервиса.</p>
+                    <div class="price">15 000₸ <span>навсегда</span></div>
+                    <p>Единоразовая оплата за пожизненный доступ ко всем текущим и будущим функциям сервиса.</p>
                     <ul>
-                        <li>Все виды виджетов</li>
-                        <li>Голосовое озвучивание (TTS)</li>
-                        <li>Windows-агент для отслеживания</li>
-                        <li>Техническая поддержка</li>
+                        <li>Все виды виджетов (оповещения, сборы и т.д.)</li>
+                        <li>Голосовое озвучивание донатов (TTS)</li>
+                        <li>Приложение для отслеживания уведомлений</li>
+                        <li>Техническая поддержка и обновления</li>
                     </ul>
                     <a href="#contact" class="btn btn-primary btn-block">Приобрести доступ</a>
                 </div>
@@ -84,8 +84,8 @@
         <section id="contact" class="contact">
             <div class="container">
                 <h2>Готовы начать?</h2>
-                <p>Для приобретения доступа и по любым вопросам свяжитесь со мной в Telegram. Я помогу с настройкой и активацией вашего аккаунта.</p>
-                <a href="https://t.me/kabi_mollaev" target="_blank" class="btn btn-secondary btn-lg">Написать в Telegram</a>
+                <p>Для покупки и по любым вопросам свяжитесь со мной в Telegram. Я помогу с настройкой и активирую ваш аккаунт после оплаты.</p>
+                <a href="https://t.me/khakimn" target="_blank" class="btn btn-secondary btn-lg">Написать в Telegram @khakimn</a>
             </div>
         </section>
     </main>
@@ -98,3 +98,4 @@
 
 </body>
 </html>
+
