@@ -554,24 +554,25 @@ def ws_route(ws):
     try:
         ws.user_id = int(user_id)
         app.clients.add(ws)
+        print(f"🔗 WebSocket client connected for user {user_id}. Total clients: {len(app.clients)}")
         ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
         
-        # Use a shorter timeout and immediate return pattern
+        # Keep connection alive with minimal blocking
         while True:
             try:
-                data = ws.receive(timeout=5)  # Very short timeout
+                data = ws.receive(timeout=1)  # Very short timeout
                 if data is None: 
                     break
-                # Process any received data here if needed
-            except Exception:
-                # On timeout, just continue the loop - this prevents worker timeout
-                continue
+            except Exception as e:
+                # Continue on timeout to keep connection alive
+                pass
                 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"❌ WebSocket error for user {user_id}: {e}")
     finally:
         if ws in app.clients:
             app.clients.remove(ws)
+            print(f"🔌 WebSocket client disconnected for user {user_id}. Total clients: {len(app.clients)}")
 
 
 # --- Запуск приложения ---
