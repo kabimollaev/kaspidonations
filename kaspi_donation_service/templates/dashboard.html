@@ -20,17 +20,24 @@
             </div>
         </header>
 
+        <!-- ИЗМЕНЕНИЕ: Блок скачивания агента -->
+        <div class="card download-agent-section">
+            <h3 class="card-title">1. Скачайте Windows Агент</h3>
+            <p>Это небольшое приложение для вашего ПК, которое будет отслеживать уведомления от Kaspi и отправлять их на стрим. Запустите его перед началом трансляции.</p>
+            <a href="{{ url_for('download_agent') }}" class="btn btn-primary">Скачать KaspiDonationsAgent.exe</a>
+        </div>
+
+
         <div class="api-key-section">
-            <h3>Ваш персональный API ключ (для "Агента")</h3>
+            <h3>2. Ваш персональный API ключ</h3>
             <input type="text" value="{{ user.api_key }}" readonly>
-            <input type="hidden" name="api-key-input" data-user-id="{{ user.id }}">
-            <p>Этот ключ понадобится для настройки локального "Агента", который будет отслеживать уведомления на вашем ПК.</p>
+            <p>Этот ключ понадобится для настройки скачанного "Агента". При первом запуске приложение попросит вас вставить этот ключ.</p>
         </div>
         
         <main class="main-grid">
             <aside class="left-column">
                 <div class="card">
-                    <h3 class="card-title">Ссылки на виджеты для OBS</h3>
+                    <h3 class="card-title">3. Ссылки на виджеты для OBS</h3>
                     <div class="widget-links">
                         <div class="form-group">
                             <label for="alert-url">Оповещение:</label>
@@ -152,3 +159,4 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
+
