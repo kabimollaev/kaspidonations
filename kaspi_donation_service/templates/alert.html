@@ -57,12 +57,14 @@
             text-align: center;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             min-width: 300px;
+            max-width: 90%;
         }
         .alert-main-text {
             font-weight: 700;
             font-size: 1.8rem;
             line-height: 1.2;
             margin: 0;
+            word-break: break-word;
         }
         .alert-main-text .highlight {
             color: #00D1B2;
@@ -82,41 +84,49 @@
     <div id="alert-container" class="alert-container"></div>
     <audio id="donation-sound"></audio>
     <script>
-        let ws;
         let alertQueue = [];
         let isShowingAlert = false;
-        let currentSettings = {};
+        let currentSettings = { min_amount: 0, tts_volume: 0.7 }; // Настройки по умолчанию
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
+        // Убедитесь, что эти файлы существуют в static/media
         const GIF_URL = '/static/media/alert.gif'; 
         const SOUND_URL = '/static/media/alert.mp3';
         const ALERT_DURATION = 8000;
-        const USER_ID = window.location.pathname.split('/')[2] || '1';
 
         function connectWebSocket() {
+            const pathParts = window.location.pathname.split('/');
+            const userId = pathParts[pathParts.length - 1];
+            if (!userId) {
+                console.error('User ID не найден в URL');
+                return;
+            }
+
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${USER_ID}`);
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
             
             ws.onopen = () => {
-                console.log('WebSocket connection established.');
+                console.log('[' + new Date().toLocaleTimeString() + '] WebSocket соединение установлено.');
             };
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                console.log('Alert widget received message:', message);
                 
-                if (message.type === 'show_alert') {
-                    alertQueue.push(message.data);
-                    processQueue();
+                if (message.type === 'full_update') {
+                    currentSettings = message.data.settings || { min_amount: 0, tts_volume: 0.7 };
+                } else if (message.type === 'show_alert') {
+                    // Проверяем минимальную сумму перед добавлением в очередь
+                    if (message.data.amount >= currentSettings.min_amount) {
+                        alertQueue.push(message.data);
+                        processQueue();
+                    }
                 } else if (message.type === 'tts') {
-                    playTTS(message.url, currentSettings.tts_volume || 0.7);
-                } else if (message.type === 'full_update') {
-                    currentSettings = message.data.settings || {};
+                    playTTS(message.url, currentSettings.tts_volume);
                 }
             };
             
             ws.onclose = () => {
-                console.log('WebSocket connection closed. Reconnecting...');
+                console.log('[' + new Date().toLocaleTimeString() + '] WebSocket соединение закрыто. Попытка переподключения...');
                 setTimeout(connectWebSocket, 3000);
             };
 
@@ -129,12 +139,10 @@
         function processQueue() {
             if (isShowingAlert || alertQueue.length === 0) return;
             isShowingAlert = true;
-            const data = alertQueue.shift();
-            showAlert(data);
+            showAlert(alertQueue.shift());
         }
 
         function showAlert(data) {
-            console.log('Showing alert for:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             alertContainer.innerHTML = `
@@ -147,38 +155,37 @@
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
                     </div>
                 </div>`;
+            
             const alertBox = alertContainer.querySelector('.alert-box');
+            
             try {
                 donationSound.src = SOUND_URL;
-                donationSound.volume = currentSettings.tts_volume || 0.7;
-                donationSound.play().catch(e => console.error("Could not play donation sound.", e));
+                donationSound.volume = currentSettings.tts_volume;
+                donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
             } catch (e) {
-                console.warn(`Could not load sound ${SOUND_URL}.`);
+                console.warn(`Не удалось загрузить звук ${SOUND_URL}.`);
             }
+            
             setTimeout(() => alertBox.classList.add('visible'), 100);
             setTimeout(() => alertBox.classList.remove('visible'), ALERT_DURATION);
+            
             setTimeout(() => {
                 alertContainer.innerHTML = '';
                 isShowingAlert = false;
                 processQueue();
-            }, ALERT_DURATION + 1000);
+            }, ALERT_DURATION + 500);
         }
 
         function playTTS(url, volume) {
             setTimeout(() => {
                 const ttsAudio = new Audio(url);
                 ttsAudio.volume = volume;
-                ttsAudio.play().catch(e => console.error("Could not play TTS audio.", e));
+                ttsAudio.play().catch(e => console.error("Не удалось воспроизвести озвучку.", e));
             }, 1000);
         }
 
         function escapeHtml(unsafe) {
-            return (unsafe || '').toString()
-                 .replace(/&/g, "&amp;")
-                 .replace(/</g, "&lt;")
-                 .replace(/>/g, "&gt;")
-                 .replace(/"/g, "&quot;")
-                 .replace(/'/g, "&#039;");
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
         connectWebSocket();
