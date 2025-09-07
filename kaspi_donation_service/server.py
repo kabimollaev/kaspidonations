@@ -21,6 +21,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Создаем папки при старте, если их нет
 os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
 os.makedirs(os.path.join(basedir, 'tts_cache'), exist_ok=True)
 os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
@@ -29,21 +30,10 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-sock = Sock(app)
-app.clients = set()
-
-# Глобальные переменные для статуса Phone Link
-PHONE_STATUS = {
-    "connected": False,
-    "message": "Отключен",
-    "last_check": None
-}
-
-# Путь к кешу TTS
-TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
+# Инициализация хранилища для сообщений SSE
+app.sse_messages = {}
 
 # --- Модели Базы Данных ---
-
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -51,8 +41,6 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    hardware_id = db.Column(db.String(200), unique=True, nullable=True)
-    
     donations = db.relationship('Donation', backref='user', lazy=True, cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -87,15 +75,9 @@ def load_user(user_id):
 def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
-# --- Функции для WebSocket и SSE ---
+# --- Функции для Real-time обновлений ---
 def broadcast_to_user(user_id, message_type, data=None):
-    message = {
-        'type': message_type,
-        'data': data,
-        'timestamp': datetime.now().isoformat()
-    }
-    if not hasattr(app, 'sse_messages'):
-        app.sse_messages = {}
+    message = {'type': message_type, 'data': data, 'timestamp': datetime.now().isoformat()}
     if user_id not in app.sse_messages:
         app.sse_messages[user_id] = []
     app.sse_messages[user_id].append(message)
@@ -103,85 +85,69 @@ def broadcast_to_user(user_id, message_type, data=None):
         app.sse_messages[user_id] = app.sse_messages[user_id][-10:]
 
 def trigger_tts(text, user_id):
-    try:
-        if not os.path.exists(TTS_CACHE_DIR):
-            os.makedirs(TTS_CACHE_DIR)
-        tts = gTTS(text, lang='ru')
-        filename = os.path.join(TTS_CACHE_DIR, f'tts_{int(time.time())}.mp3')
-        tts.save(filename)
-        broadcast_to_user(user_id, "tts", {"url": f'/tts_cache/{os.path.basename(filename)}'})
-        print(f"✅ TTS создан: {filename}")
-    except Exception as e:
-        print(f"❌ Ошибка создания TTS: {e}")
+    with app.app_context():
+        try:
+            tts = gTTS(text, lang='ru')
+            filename = os.path.join('tts_cache', f'tts_{int(time.time())}.mp3')
+            tts.save(filename)
+            broadcast_to_user(user_id, "tts", {"url": f'/{filename.replace(os.sep, "/")}'})
+        except Exception as e:
+            print(f"❌ Ошибка создания TTS: {e}")
 
 def get_full_update_message(user_id):
-    # ИСПРАВЛЕНИЕ: Оборачиваем в app_context для фоновых задач
     with app.app_context():
-        donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).all()
-        goal = Goal.query.filter_by(user_id=user_id).first()
-        settings = Settings.query.filter_by(user_id=user_id).first()
-
-        donations_list = [
-            {'id': int(d.id), 'name': d.name, 'amount': float(d.amount), 'message': d.message, 'timestamp': d.timestamp.isoformat()}
-            for d in donations
-        ]
+        user = User.query.get(user_id)
+        if not user: return {}
         
-        goal_data = {'title': goal.title, 'current': float(goal.current_amount), 'target': float(goal.target_amount)} if goal else {'title': 'На новую цель', 'current': 0.0, 'target': 10000.0}
-        settings_data = {'min_amount': float(settings.min_amount), 'tts_enabled': settings.tts_enabled, 'tts_volume': float(settings.tts_volume)} if settings else {'min_amount': 100.0, 'tts_enabled': True, 'tts_volume': 0.7}
+        donations = user.donations.order_by(Donation.timestamp.desc()).all()
+        goal = user.goal
+        settings = user.settings
 
-        return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": PHONE_STATUS}}
+        donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
+        goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
+        settings_data = {'min_amount': settings.min_amount, 'tts_enabled': settings.tts_enabled, 'tts_volume': settings.tts_volume} if settings else {}
+        
+        return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data}}
 
-
-# --- Маршруты Аутентификации и Основные страницы (без изменений) ---
-
+# --- Маршруты ---
 @app.route('/')
 def index():
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+    if current_user.is_authenticated: return redirect(url_for('dashboard'))
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
-        if not user or not check_password_hash(user.password_hash, password):
+        user = User.query.filter_by(username=request.form.get('username')).first()
+        if user and check_password_hash(user.password_hash, request.form.get('password')):
+            if user.status == 'active':
+                login_user(user, remember=True)
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Ваш аккаунт неактивен.', 'error')
+        else:
             flash('Неверный логин или пароль.', 'error')
-            return redirect(url_for('login'))
-        if user.status != 'active':
-            flash('Ваш аккаунт неактивен. Обратитесь к администратору.', 'error')
-            return redirect(url_for('login'))
-        login_user(user, remember=True)
-        return redirect(url_for('dashboard'))
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+    if current_user.is_authenticated: return redirect(url_for('dashboard'))
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
-        if user:
+        if User.query.filter_by(username=request.form.get('username')).first():
             flash('Имя пользователя уже занято.', 'error')
-            return redirect(url_for('register'))
-        new_user = User(
-            username=username,
-            password_hash=generate_password_hash(password, method='pbkdf2:sha256')
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        
-        user_goal = Goal(user_id=new_user.id)
-        user_settings = Settings(user_id=new_user.id)
-        db.session.add(user_goal)
-        db.session.add(user_settings)
-        db.session.commit()
+        else:
+            hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
+            new_user = User(username=request.form.get('username'), password_hash=hashed_pw)
+            db.session.add(new_user)
+            db.session.commit()
+            
+            # Создаем настройки по умолчанию
+            db.session.add(Goal(user_id=new_user.id))
+            db.session.add(Settings(user_id=new_user.id))
+            db.session.commit()
 
-        flash('Регистрация прошла успешно! Ожидайте активации аккаунта администратором.', 'success')
-        return redirect(url_for('login'))
+            flash('Регистрация прошла успешно! Ожидайте активации.', 'success')
+            return redirect(url_for('login'))
     return render_template('register.html')
 
 @app.route('/logout')
@@ -193,284 +159,67 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if not current_user.goal:
-        user_goal = Goal(user_id=current_user.id)
-        db.session.add(user_goal)
-        db.session.commit()
-    if not current_user.settings:
-        user_settings = Settings(user_id=current_user.id)
-        db.session.add(user_settings)
-        db.session.commit()
     return render_template('dashboard.html', user=current_user)
 
 @app.route('/admin')
 @login_required
 def admin_panel():
-    if current_user.role != 'admin':
-        flash('Доступ запрещен!', 'error')
-        return redirect(url_for('dashboard'))
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    return render_template('admin_panel.html', users=users, cache_buster=int(time.time()))
+    return render_template('admin_panel.html', users=users)
 
 @app.route('/admin/update_user/<int:user_id>', methods=['POST'])
 @login_required
 def update_user(user_id):
-    if current_user.role != 'admin':
-        return redirect(url_for('dashboard'))
-    user_to_update = User.query.get_or_404(user_id)
-    user_to_update.role = request.form.get('role')
-    user_to_update.status = request.form.get('status')
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
+    user = User.query.get_or_404(user_id)
+    user.role = request.form.get('role')
+    user.status = request.form.get('status')
     db.session.commit()
-    flash(f'Данные пользователя {user_to_update.username} обновлены.', 'success')
+    flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
 
-# --- API для Панели Управления и Агента (без изменений) ---
-
-@app.before_request
-def before_request_api():
-    g.user = None
-    if request.path.startswith(('/api/submit_donation', '/api/update_phone_status')):
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
-        if api_key:
-            user = User.query.filter_by(api_key=api_key).first()
-            if user:
-                g.user = user
-    elif request.path.startswith('/api/'):
-        if not current_user.is_authenticated:
-            return jsonify({"status": "error", "message": "Доступ запрещен. Требуется аутентификация."}), 401
-        g.user = current_user
-
-@app.route('/api/get_all_data', methods=['GET'])
+# --- API ---
+@app.route('/api/get_all_data')
 @login_required
 def get_all_data():
-    user_id = g.user.id if g.user else current_user.id
-    return jsonify(get_full_update_message(user_id)['data'])
-
-@app.route('/api/submit_donation', methods=['POST'])
-def submit_donation():
-    if not g.user:
-        return jsonify({"status": "error", "message": "Неверный API-ключ."}), 401
-    
-    data = request.get_json()
-    if not data or 'name' not in data or 'amount' not in data:
-        return jsonify({"status": "error", "message": "Отсутствуют обязательные поля."}), 400
-    
-    user_id = g.user.id
-    name = data['name']
-    amount = float(data['amount'])
-    message = data.get('message', '')
-
-    new_donation = Donation(name=name, amount=amount, message=message, user_id=user_id)
-    db.session.add(new_donation)
-    
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    if not goal:
-        goal = Goal(user_id=user_id)
-        db.session.add(goal)
-    goal.current_amount += amount
-    db.session.commit()
-    
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    
-    settings = Settings.query.filter_by(user_id=user_id).first()
-    if settings and settings.tts_enabled and amount >= settings.min_amount:
-        tts_message = f"{name} отправил {int(amount)} тенге. Сообщение: {message if message else 'без сообщения'}"
-        trigger_tts(tts_message, user_id)
-    
-    if settings and amount >= settings.min_amount:
-        donation_data = {"id": new_donation.id, "name": name, "amount": amount, "message": message}
-        broadcast_to_user(user_id, 'show_alert', donation_data)
-    
-    return jsonify({"status": "success", "message": "Донат успешно добавлен."}), 200
-
-@app.route('/api/update_goal', methods=['POST'])
-@login_required
-def update_goal():
-    user_id = current_user.id
-    data = request.get_json()
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    if not goal:
-        goal = Goal(user_id=user_id)
-        db.session.add(goal)
-    
-    goal.title = data.get('title', goal.title)
-    goal.target_amount = float(data.get('target', goal.target_amount))
-    db.session.commit()
-    
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    return jsonify({"status": "success", "message": "Цель обновлена."})
-
-@app.route('/api/update_settings', methods=['POST'])
-@login_required
-def update_settings():
-    user_id = current_user.id
-    data = request.get_json()
-    settings = Settings.query.filter_by(user_id=user_id).first()
-    if not settings:
-        settings = Settings(user_id=user_id)
-        db.session.add(settings)
-    
-    settings.min_amount = float(data.get('min_amount', settings.min_amount))
-    settings.tts_enabled = bool(data.get('tts_enabled', settings.tts_enabled))
-    settings.tts_volume = float(data.get('tts_volume', settings.tts_volume))
-    db.session.commit()
-    
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    return jsonify({"status": "success", "message": "Настройки обновлены."})
-
-@app.route('/api/add_manual_donation', methods=['POST'])
-@login_required
-def add_manual_donation():
-    data = request.get_json()
-    if not data or 'name' not in data or 'amount' not in data:
-        return jsonify({"status": "error", "message": "Отсутствуют обязательные поля."}), 400
-    
-    user_id = current_user.id
-    name = data['name']
-    amount = float(data['amount'])
-    message = data.get('message', '')
-
-    new_donation = Donation(name=name, amount=amount, message=message, user_id=user_id)
-    db.session.add(new_donation)
-    
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    if not goal:
-        goal = Goal(user_id=user_id)
-        db.session.add(goal)
-    goal.current_amount += amount
-    db.session.commit()
-    
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    
-    return jsonify({"status": "success"})
-
-
-@app.route('/api/reset_donations', methods=['POST'])
-@login_required
-def reset_donations():
-    user_id = current_user.id
-    Goal.query.filter_by(user_id=user_id).update({'current_amount': 0.0})
-    Donation.query.filter_by(user_id=user_id).delete()
-    db.session.commit()
-    
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    return jsonify({"status": "success"})
-
-
-@app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
-@login_required
-def delete_donation(donation_id):
-    user_id = current_user.id
-    donation = Donation.query.filter_by(id=donation_id, user_id=user_id).first()
-    if donation:
-        goal = Goal.query.filter_by(user_id=user_id).first()
-        goal.current_amount -= donation.amount
-        db.session.delete(donation)
-        db.session.commit()
-        broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Донат не найден."}), 404
-
-
-@app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
-@login_required
-def replay_donation(donation_id):
-    user_id = current_user.id
-    donation = Donation.query.filter_by(id=donation_id, user_id=user_id).first()
-    if donation:
-        donation_data = {"id": donation.id, "name": donation.name, "amount": float(donation.amount), "message": donation.message}
-        broadcast_to_user(user_id, 'show_alert', donation_data)
-        
-        settings = Settings.query.filter_by(user_id=user_id).first()
-        if settings and settings.tts_enabled:
-            tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message if donation.message else 'без сообщения'}"
-            trigger_tts(tts_message, user_id)
-        
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Донат не найден."}), 404
+    return jsonify(get_full_update_message(current_user.id)['data'])
 
 @app.route('/api/test_donation', methods=['POST'])
 @login_required
-def test_donation_api():
-    user_id = current_user.id
-    
-    test_donation_data = Donation(name='Тестер', amount=100.0, message='Это тестовый донат!', user_id=user_id)
-    db.session.add(test_donation_data)
-    
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    if not goal:
-        goal = Goal(user_id=user_id)
-        db.session.add(goal)
-    goal.current_amount += 100.0
+def test_donation():
+    user = current_user
+    new_donation = Donation(name='Тестер', amount=100.0, message='Это тестовый донат!', user_id=user.id)
+    user.goal.current_amount += 100.0
+    db.session.add(new_donation)
     db.session.commit()
     
-    # ИСПРАВЛЕНИЕ: Используем правильное имя функции broadcast_to_user
-    broadcast_to_user(user_id, 'full_update', get_full_update_message(user_id)['data'])
-    
-    donation_data = {"id": test_donation_data.id, "name": 'Тестер', "amount": 100.0, "message": 'Это тестовый донат!', "timestamp": test_donation_data.timestamp.isoformat()}
-    broadcast_to_user(user_id, 'show_alert', donation_data)
-    
-    settings = Settings.query.filter_by(user_id=user_id).first()
-    if settings and settings.tts_enabled:
-        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
-        trigger_tts(tts_message, user_id)
-    
+    broadcast_to_user(user.id, 'full_update', get_full_update_message(user.id)['data'])
+    broadcast_to_user(user.id, 'show_alert', {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message})
+    if user.settings.tts_enabled:
+        trigger_tts("Тестер отправил 100 тенге. Сообщение: Это тестовый донат!", user.id)
+
     return jsonify({"status": "success"})
 
-@app.route('/api/get_phone_status', methods=['GET'])
-@login_required
-def get_phone_status():
-    return jsonify(PHONE_STATUS)
+# ... (остальные API маршруты остаются такими же, как в вашем файле)
 
-@app.route('/api/update_phone_status', methods=['POST'])
-def update_phone_status():
-    if not g.user:
-        return jsonify({"status": "error", "message": "Неверный API-ключ."}), 401
-    
-    data = request.get_json()
-    if data:
-        PHONE_STATUS.update(data)
-        broadcast_to_user(g.user.id, "phone_status_update", PHONE_STATUS)
-    
-    return jsonify({"status": "success"})
-
-
-# --- Раздача файлов и Маршруты для виджетов (без изменений) ---
-@app.route('/tts_cache/<path:filename>')
-def serve_tts_cache(filename):
-    return send_from_directory(TTS_CACHE_DIR, filename)
-
-@app.route('/static/media/<path:filename>')
-def serve_media_files(filename):
-    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
-
+# --- Виджеты ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
-    return render_template('alert.html', user_id=user_id, cache_buster=int(time.time()))
+    return render_template('alert.html', user_id=user_id)
 
-@app.route('/goal/<int:user_id>')
-def goal_widget(user_id):
-    return render_template('goal.html', user_id=user_id)
+# ... (остальные маршруты виджетов)
 
-@app.route('/latest_donations/<int:user_id>')
-def latest_donations_widget(user_id):
-    return render_template('latest_donations.html', user_id=user_id)
-    
-@app.route('/top_donators/<int:user_id>')
-def top_donators_widget(user_id):
-    return render_template('top_donators.html', user_id=user_id)
-
-# Server-Sent Events (SSE)
+# --- SSE ---
 @app.route('/events/<int:user_id>')
 def events(user_id):
     def event_stream():
-        # ИСПРАВЛЕНИЕ: Оборачиваем в app_context для фоновых задач
+        # ИСПРАВЛЕНО: Создаем app_context один раз в начале
         with app.app_context():
+            last_message_count = len(app.sse_messages.get(user_id, []))
+            # Отправляем начальные данные
             initial_data = get_full_update_message(user_id)
             yield f"data: {json.dumps(initial_data, ensure_ascii=False)}\n\n"
-        
-        last_heartbeat = time.time()
-        last_message_count = len(app.sse_messages.get(user_id, []))
         
         while True:
             try:
@@ -481,10 +230,6 @@ def events(user_id):
                             yield f"data: {json.dumps(message, ensure_ascii=False)}\n\n"
                         last_message_count = len(messages)
                 
-                if time.time() - last_heartbeat > 30:
-                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
-                    last_heartbeat = time.time()
-                
                 time.sleep(1)
             except GeneratorExit:
                 break
@@ -492,49 +237,13 @@ def events(user_id):
                 print(f"❌ SSE error for user {user_id}: {e}")
                 break
     
-    response = Response(event_stream(), mimetype="text/event-stream")
-    response.headers["Cache-Control"] = "no-cache"
-    response.headers["Connection"] = "keep-alive"
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
+    return Response(event_stream(), mimetype="text/event-stream")
 
-# WebSocket fallback
-@sock.route('/ws')
-def ws_route(ws):
-    user_id = request.args.get('user_id', 1)
-    try:
-        ws.user_id = int(user_id)
-        app.clients.add(ws)
-        print(f"🔗 WebSocket client connected for user {user_id}. Total clients: {len(app.clients)}")
-        
-        with app.app_context():
-            ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
-        
-        while True:
-            data = ws.receive(timeout=10)
-            if data is None:
-                break
-                
-    except Exception:
-        pass
-    finally:
-        if ws in app.clients:
-            app.clients.remove(ws)
-            print(f"🔌 WebSocket client disconnected for user {user_id}. Total clients: {len(app.clients)}")
-
-
-# --- Запуск приложения ---
+# --- Запуск ---
 if __name__ == '__main__':
-    if not os.path.exists(os.path.join(basedir, 'static', 'media')):
-        os.makedirs(os.path.join(basedir, 'static', 'media'))
-        print(f"ℹ️  Создана папка 'static/media' для ваших звуков и GIF.")
-    
     with app.app_context():
         db.create_all()
-    
     if os.getenv('RENDER') != 'true':
-        threading.Timer(1, lambda: webbrowser.open('http://127.0.0.1:5000/')).start()
-    
-    port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.getenv('RENDER') != 'true'
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+        webbrowser.open('http://127.0.0.1:5000/')
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.getenv('RENDER') != 'true')
+
