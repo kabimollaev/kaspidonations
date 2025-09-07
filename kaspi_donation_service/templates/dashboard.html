@@ -69,18 +69,6 @@
     
             <section class="main-content">
                 <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">История донатов</h3>
-                        <button onclick="window.open('/latest_donations_popout/{{ current_user.id }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
-                            📋 Открыть в новом окне
-                        </button>
-                    </div>
-                    <div id="donations-list">
-                        <p>Загрузка...</p>
-                    </div>
-                </div>
-    
-                <div class="card">
                     <h3 class="card-title">Ручное добавление</h3>
                     <form id="add-donation-form">
                         <div class="form-group">
@@ -140,13 +128,22 @@
     
             <aside class="right-column">
                 <div class="card">
-                    <h3 class="card-title">
-                        История донатов
-                    </h3>
+                    <div class="card-header">
+                        <h3 class="card-title">История донатов</h3>
+                        <button onclick="window.open('/latest_donations_popout/{{ current_user.id }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
+                            📋 Открыть в новом окне
+                        </button>
+                    </div>
+                    <div id="donations-list">
+                        <p>Загрузка...</p>
+                    </div>
                 </div>
+
                 <div class="card">
-                    <h3 class="card-title">Консоль агента</h3>
-                    <div id="console-output" class="console-output"></div>
+                    <h3 class="card-title">Консоль событий</h3>
+                    <div id="console-output" class="console-output">
+                        <!-- Логи будут добавляться сюда -->
+                    </div>
                 </div>
             </aside>
         </main>

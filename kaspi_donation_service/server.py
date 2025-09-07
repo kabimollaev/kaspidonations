@@ -234,6 +234,12 @@ def before_request_api():
             user = User.query.filter_by(api_key=api_key).first()
             if user:
                 g.user = user
+    elif request.path.startswith('/api/update_phone_status'):
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if api_key:
+            user = User.query.filter_by(api_key=api_key).first()
+            if user:
+                g.user = user
     elif request.path.startswith('/api/'):
         if not current_user.is_authenticated:
             return jsonify({"status": "error", "message": "Доступ запрещен. Требуется аутентификация."}), 401
