@@ -87,18 +87,38 @@ def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
 # --- Функции для WebSocket ---
-def broadcast(data, user_id):
-    """Отправляет данные всем клиентам WebSocket данного пользователя."""
-    message = json.dumps(data, ensure_ascii=False)
-    sent_count = 0
-    for ws in app.clients:
-        if hasattr(ws, 'user_id') and ws.user_id == user_id:
-            try:
-                ws.send(message)
-                sent_count += 1
-            except Exception as e:
-                print(f"❌ Не удалось отправить WebSocket сообщение: {e}")
-    print(f"📡 Broadcast sent to {sent_count} clients for user {user_id}: {data.get('type', 'unknown')}")
+def broadcast_to_user(user_id, message_type, data=None):
+    """Отправляет сообщение всем WebSocket клиентам пользователя"""
+    message = {
+        'type': message_type,
+        'data': data,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Подсчитываем клиентов для данного пользователя
+    user_clients = [client for client in app.clients if hasattr(client, 'user_id') and client.user_id == user_id]
+    
+    print(f"📡 Broadcast sent to {len(user_clients)} clients for user {user_id}: {message_type}")
+    
+    # Store message for SSE clients
+    if not hasattr(app, 'sse_messages'):
+        app.sse_messages = {}
+    if user_id not in app.sse_messages:
+        app.sse_messages[user_id] = []
+    
+    app.sse_messages[user_id].append(message)
+    # Keep only last 10 messages to prevent memory issues
+    if len(app.sse_messages[user_id]) > 10:
+        app.sse_messages[user_id] = app.sse_messages[user_id][-10:]
+    
+    # Send to WebSocket clients (fallback)
+    for client in user_clients[:]:
+        try:
+            client.send(json.dumps(message, ensure_ascii=False))
+        except Exception as e:
+            print(f"❌ Failed to send to client: {e}")
+            if client in app.clients:
+                app.clients.remove(client)
 
 def trigger_tts(text, user_id):
     """Создает TTS файл и отправляет его через WebSocket."""
@@ -547,7 +567,50 @@ def top_donators_widget(user_id):
     return render_template('top_donators.html', user_id=user_id)
 
 
-# WebSocket - Keep alive without blocking workers
+# Server-Sent Events (SSE) - More reliable than WebSocket on Render.com
+@app.route('/events/<int:user_id>')
+def events(user_id):
+    def event_stream():
+        # Send initial data
+        initial_data = get_full_update_message(user_id)
+        yield f"data: {json.dumps(initial_data, ensure_ascii=False)}\n\n"
+        
+        # Keep connection alive and send messages
+        import time
+        last_heartbeat = time.time()
+        last_message_count = 0
+        
+        while True:
+            try:
+                # Check for new messages
+                if hasattr(app, 'sse_messages') and user_id in app.sse_messages:
+                    messages = app.sse_messages[user_id]
+                    if len(messages) > last_message_count:
+                        # Send new messages
+                        for message in messages[last_message_count:]:
+                            yield f"data: {json.dumps(message, ensure_ascii=False)}\n\n"
+                        last_message_count = len(messages)
+                
+                # Send heartbeat every 30 seconds to keep connection alive
+                current_time = time.time()
+                if current_time - last_heartbeat > 30:
+                    yield f"data: {json.dumps({'type': 'heartbeat'}, ensure_ascii=False)}\n\n"
+                    last_heartbeat = current_time
+                
+                time.sleep(1)  # Check every second
+            except GeneratorExit:
+                break
+            except Exception as e:
+                print(f"❌ SSE error for user {user_id}: {e}")
+                break
+    
+    response = Response(event_stream(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+# WebSocket fallback (kept for compatibility)
 @sock.route('/ws')
 def ws_route(ws):
     user_id = request.args.get('user_id', 1)
@@ -562,13 +625,10 @@ def ws_route(ws):
         # Keep connection alive with minimal blocking
         while True:
             try:
-                # Use very short timeout to avoid worker timeout
                 data = ws.receive(timeout=0.01)
                 if data is None:
                     break
-                # Handle ping/pong or other messages if needed
             except Exception:
-                # Continue on timeout or other exceptions
                 pass
                 
     except Exception as e:

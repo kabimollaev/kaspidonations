@@ -90,21 +90,25 @@
         const SOUND_URL = '/static/media/alert.mp3';
         const ALERT_DURATION = 8000;
 
-        function connectWebSocket() {
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        function connectSSE() {
             const userId = window.location.pathname.split('/')[2] || '1';
-            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
-            ws.onopen = () => console.log('Alert widget connected with user_id:', userId);
-            ws.onmessage = (event) => {
+            const eventSource = new EventSource(`/events/${userId}`);
+            
+            eventSource.onopen = () => {
+                console.log('[' + new Date().toLocaleTimeString() + '] SSE соединение установлено.');
+            };
+            
+            eventSource.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                console.log('Alert widget received message:', message);
+                console.log('Alert widget received SSE message:', message);
+                
                 if (message.type === 'show_alert') {
                     console.log('Processing show_alert message:', message.data);
                     alertQueue.push(message.data);
                     processQueue();
-                } else if (message.type === 'ping') {
-                    // Ignore ping messages
-                    console.log('Received ping from server');
+                } else if (message.type === 'heartbeat') {
+                    // Ignore heartbeat messages
+                    console.log('Received heartbeat from server');
                 } else if (message.type === 'tts') {
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
@@ -121,12 +125,11 @@
                     }
                 }
             };
-            ws.onclose = () => {
-                console.log('Alert widget WebSocket closed, reconnecting...');
-                setTimeout(connectWebSocket, 3000);
-            };
-            ws.onerror = (error) => {
-                console.error('Alert widget WebSocket error:', error);
+            
+            eventSource.onerror = (error) => {
+                console.log('[' + new Date().toLocaleTimeString() + '] SSE соединение закрыто. Попытка переподключения...');
+                eventSource.close();
+                setTimeout(connectSSE, 3000);
             };
         }
 
@@ -187,8 +190,9 @@
         function escapeHtml(unsafe) {
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-        connectWebSocket();
+
+        // Подключение к SSE при загрузке страницы
+        connectSSE();
     </script>
 </body>
 </html>
-
