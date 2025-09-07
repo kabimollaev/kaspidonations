@@ -4,7 +4,7 @@ import os
 import json
 import webbrowser
 import threading
-from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory, Response
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
