@@ -547,23 +547,27 @@ def top_donators_widget(user_id):
 # WebSocket
 @sock.route('/ws')
 def ws_route(ws):
-    user_id = request.args.get('user_id')
-    if not user_id:
-        ws.close()
-        return
-
+    user_id = request.args.get('user_id', 1)
     try:
         ws.user_id = int(user_id)
         app.clients.add(ws)
         ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
         while True:
-            data = ws.receive()
-            if data is None: 
-                break
+            try:
+                data = ws.receive(timeout=30)  # 30 second timeout
+                if data is None: 
+                    break
+            except Exception:
+                # Timeout or connection error - send ping to keep alive
+                try:
+                    ws.send(json.dumps({"type": "ping"}, ensure_ascii=False))
+                except:
+                    break
     except Exception:
         pass
     finally:
-        app.clients.remove(ws)
+        if ws in app.clients:
+            app.clients.remove(ws)
 
 
 # --- Запуск приложения ---
