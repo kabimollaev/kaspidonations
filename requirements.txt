@@ -6,3 +6,5 @@ Flask-Sock
 gunicorn
 gtts
 requests
+gevent
+greenlet
