@@ -1,119 +1,128 @@
-/* OBS Виджеты - Основные стили */
+/* =================================================================
+   РЕДИЗАЙН ВИДЖЕТОВ v2.0
+   Стиль: Kaspi (Темный + Красный)
+================================================================= */
+
+:root {
+    --primary-color: #F14635; /* Красный цвет Kaspi */
+    --dark-bg: #1A1A1A;
+    --card-bg-transparent: rgba(26, 26, 26, 0.9);
+    --text-light: #FFFFFF;
+    --text-muted: #A0AEC0;
+    --border-color: #3a3a3a;
+}
+
 body {
     background-color: transparent !important;
     font-family: 'Inter', sans-serif;
     margin: 0;
     padding: 0;
-    color: white;
+    color: var(--text-light);
     overflow: hidden;
 }
 
 .widget-container {
-    background: rgba(10, 10, 10, 0.9);
+    background: var(--card-bg-transparent);
     backdrop-filter: blur(10px);
     border-radius: 12px;
     padding: 20px;
     margin: 10px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(136, 108, 255, 0.3);
+    border: 1px solid var(--border-color);
     min-width: 300px;
 }
 
 .widget-title {
     font-size: 1.5rem;
     font-weight: 700;
-    margin: 0 0 15px 0;
+    margin: 0 0 20px 0;
     text-align: center;
-    background: linear-gradient(90deg, #886CFF, #6DD5FA);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-light);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 15px;
 }
 
-/* Goal Widget */
+/* --- Goal Widget --- */
 .goal-info {
     text-align: center;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
 }
 
 .goal-info span {
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 900;
-    color: #00D1B2;
+    color: var(--primary-color);
 }
 
 .goal-progress-bar {
     width: 100%;
     height: 20px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
     border-radius: 10px;
     overflow: hidden;
     margin-bottom: 15px;
+    border: 1px solid var(--border-color);
 }
 
 .goal-progress {
     height: 100%;
-    background: linear-gradient(90deg, #886CFF, #6DD5FA);
+    background: var(--primary-color);
     border-radius: 10px;
     transition: width 0.5s ease;
-    box-shadow: 0 0 10px rgba(136, 108, 255, 0.5);
+    box-shadow: 0 0 10px rgba(241, 70, 53, 0.5);
 }
 
 .goal-details {
     display: flex;
     justify-content: space-between;
     font-size: 0.9rem;
-    color: #E0E0E0;
+    color: var(--text-muted);
 }
 
-/* Latest Donations Widget */
-#latest-donations-list {
+/* --- Latest Donations / Top Donators Widgets --- */
+#latest-donations-list, #donators-list {
     max-height: 300px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Отступ между элементами */
 }
 
-.list-item-header {
+.list-item, .donator-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
-}
-
-.list-item-message {
-    font-size: 0.9rem;
-    color: #B0B0B0;
-    margin: 0;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    word-break: break-word;
-}
-
-.list-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 12px 15px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.2);
     animation: slideIn 0.3s ease-out forwards;
     opacity: 0;
     transform: translateX(-20px);
 }
 
-.list-item:last-child {
-    border-bottom: none;
-}
-
-.list-item-name {
+.list-item-name, .donator-name {
     font-weight: 600;
-    color: #FFFFFF;
+    color: var(--text-light);
     flex: 1;
 }
 
-.list-item-amount {
+.list-item-amount, .donator-amount {
     font-weight: 700;
-    color: #00D1B2;
+    color: var(--text-light);
     font-size: 1.1rem;
 }
+
+.donator-rank {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--primary-color);
+    margin-right: 15px;
+    min-width: 30px;
+}
+.donator-item:first-child .donator-rank { color: #FFD700; }
+.donator-item:nth-child(2) .donator-rank { color: #C0C0C0; }
+.donator-item:nth-child(3) .donator-rank { color: #CD7F32; }
+
 
 @keyframes slideIn {
     to {
@@ -122,67 +131,15 @@ body {
     }
 }
 
-/* Top Donators Widget */
-.donator-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    position: relative;
-}
-
-.donator-item:last-child {
-    border-bottom: none;
-}
-
-.donator-rank {
-    font-size: 1.2rem;
-    font-weight: 900;
-    color: #886CFF;
-    margin-right: 15px;
-    min-width: 30px;
-}
-
-.donator-name {
-    font-weight: 600;
-    color: #FFFFFF;
-    flex: 1;
-}
-
-.donator-amount {
-    font-weight: 700;
-    color: #00D1B2;
-    font-size: 1.1rem;
-}
-
-.donator-item:first-child .donator-rank {
-    color: #FFD700;
-}
-
-.donator-item:nth-child(2) .donator-rank {
-    color: #C0C0C0;
-}
-
-.donator-item:nth-child(3) .donator-rank {
-    color: #CD7F32;
-}
-
-/* Scrollbar для виджетов */
-::-webkit-scrollbar {
-    width: 6px;
-}
-
+/* --- Scrollbar для виджетов --- */
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb {
-    background: rgba(136, 108, 255, 0.5);
+    background: var(--primary-color);
     border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-color-hover); }
 
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(136, 108, 255, 0.7);
-}
