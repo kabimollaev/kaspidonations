@@ -10,81 +10,54 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css', v=cache_buster) }}">
 </head>
 <body>
-    <header class="header">
+
+    <header class="main-header">
         <div class="container">
-            <div class="logo">Kaspi Donations</div>
-            <nav class="nav">
+            <div class="logo">KaspiDonations</div>
+            <nav class="main-nav">
                 <a href="#features">Возможности</a>
-                <a href="#requirements">Требования</a>
                 <a href="#pricing">Цена</a>
-                <a href="{{ url_for('login') }}" class="btn btn-secondary">Войти</a>
+                <a href="#contact">Контакты</a>
             </nav>
+            <div class="header-actions">
+                <a href="{{ url_for('login') }}" class="btn btn-secondary">Вход</a>
+                <a href="{{ url_for('register') }}" class="btn btn-primary">Регистрация</a>
+            </div>
         </div>
     </header>
 
     <main>
         <section class="hero">
             <div class="container">
-                <h1>Выводите донаты с Kaspi.kz прямо на стрим</h1>
-                <p class="subtitle">Мгновенные оповещения с озвучкой для ваших трансляций на Twitch, YouTube и TikTok Live Studio.</p>
-                <a href="https://t.me/khakimn" target="_blank" class="btn btn-primary btn-lg">Приобрести доступ</a>
+                <h1>Принимайте донаты с Kaspi.kz прямо на стриме</h1>
+                <p class="subtitle">Увеличьте интерактивность ваших трансляций с помощью мгновенных оповещений, гибко настраиваемых виджетов и голосового озвучивания донатов с Kaspi.</p>
+                <a href="#pricing" class="btn btn-primary btn-lg">Узнать больше</a>
             </div>
         </section>
 
         <section id="features" class="features">
             <div class="container">
-                <div class="section-header">
-                    <h2>Все, что нужно для интерактивного стрима</h2>
-                    <p>Полный набор инструментов для управления донатами в реальном времени.</p>
-                </div>
+                <h2>Все, что нужно для интерактивных стримов</h2>
                 <div class="features-grid">
                     <div class="feature-card">
-                        <h3>🚀 Мгновенные оповещения</h3>
-                        <p>Наше приложение для ПК синхронизируется с вашим телефоном и моментально перехватывает уведомления о переводах Kaspi, отправляя их на стрим.</p>
+                        <div class="feature-icon">🖥️</div>
+                        <h3>Простая интеграция с OBS</h3>
+                        <p>Наши виджеты легко добавляются в OBS, XSplit и другие программы для стриминга как источник "Браузер". Настройка занимает меньше минуты.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>🎤 Голосовая озвучка (TTS)</h3>
-                        <p>Каждый донат будет зачитан приятным голосом, чтобы вы не пропустили ни одного сообщения от ваших зрителей.</p>
+                        <div class="feature-icon">🔔</div>
+                        <h3>Мгновенные оповещения</h3>
+                        <p>Специальное приложение для ПК отслеживает уведомления от "Связь с телефоном" и моментально отправляет их на стрим без задержек.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>🎨 Полная кастомизация</h3>
-                        <p>Настраивайте виджеты оповещений, цели сбора, списки топ-донатеров и последних донатов под стиль вашего стрима.</p>
+                        <div class="feature-icon">🎨</div>
+                        <h3>Настраиваемые виджеты</h3>
+                        <p>Управляйте внешним видом оповещений, полосой сбора средств, а также списками последних и лучших донатеров через удобную панель.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>🖥️ Поддержка OBS и TikTok</h3>
-                        <p>Сервис полностью совместим с OBS Studio, Streamlabs и TikTok Live Studio, позволяя легко интегрировать виджеты в вашу трансляцию.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="requirements" class="requirements">
-            <div class="container">
-                <div class="section-header">
-                    <h2>Системные требования</h2>
-                    <p>Для корректной работы сервиса вам понадобится:</p>
-                </div>
-                <div class="requirements-list">
-                    <div class="requirement-item">
-                        <div class="req-icon">🖥️</div>
-                        <div class="req-text">
-                            <h4>Компьютер с Windows 10/11</h4>
-                            <p>Рекомендуется использовать Windows 11 для наилучшей стабильности.</p>
-                        </div>
-                    </div>
-                    <div class="requirement-item">
-                        <div class="req-icon">📱</div>
-                        <div class="req-text">
-                            <h4>Телефон на Android</h4>
-                            <p>Для синхронизации уведомлений с ПК.</p>
-                        </div>
-                    </div>
-                    <div class="requirement-item">
-                        <div class="req-icon">💨</div>
-                        <div class="req-text">
-                            <h4>Bluetooth на ПК</h4>
-                            <p>Необходим для установления связи между компьютером и телефоном.</p>
-                        </div>
+                        <div class="feature-icon">🔊</div>
+                        <h3>Голосовое озвучивание (TTS)</h3>
+                        <p>Включите автоматическое зачитывание сообщений донатеров, чтобы не отвлекаться от игры и уделить внимание каждому зрителю.</p>
                     </div>
                 </div>
             </div>
@@ -92,31 +65,36 @@
 
         <section id="pricing" class="pricing">
             <div class="container">
-                <div class="section-header">
-                    <h2>Прозрачная цена</h2>
-                    <p>Один платеж — и сервис ваш навсегда.</p>
-                </div>
-                <div class="price-card">
-                    <h3>Единоразовый платеж</h3>
-                    <div class="price">15 000 ₸</div>
-                    <div class="price-period">навсегда</div>
+                <h2>Простая и понятная цена</h2>
+                <div class="pricing-card">
+                    <h3>Полный доступ</h3>
+                    <div class="price">15 000₸ <span>навсегда</span></div>
+                    <p>Единоразовая оплата за пожизненный доступ ко всем текущим и будущим функциям сервиса.</p>
                     <ul>
-                        <li>Все виджеты и функции</li>
-                        <li>Будущие обновления</li>
-                        <li>Техническая поддержка</li>
+                        <li>Все виды виджетов (оповещения, сборы и т.д.)</li>
+                        <li>Голосовое озвучивание донатов (TTS)</li>
+                        <li>Приложение для отслеживания уведомлений</li>
+                        <li>Техническая поддержка и обновления</li>
                     </ul>
-                    <a href="https://t.me/khakimn" target="_blank" class="btn btn-primary btn-lg">Написать для покупки</a>
+                    <a href="#contact" class="btn btn-primary btn-block">Приобрести доступ</a>
                 </div>
+            </div>
+        </section>
+
+        <section id="contact" class="contact">
+            <div class="container">
+                <h2>Готовы начать?</h2>
+                <p>Для покупки и по любым вопросам свяжитесь со мной в Telegram. Я помогу с настройкой и активирую ваш аккаунт после оплаты.</p>
+                <a href="https://t.me/khakimn" target="_blank" class="btn btn-secondary btn-lg">Написать в Telegram @khakimn</a>
             </div>
         </section>
     </main>
 
-    <footer class="footer">
+    <footer class="main-footer">
         <div class="container">
-            <p>&copy; 2025 Kaspi Donations. Все права защищены.</p>
-            <p>Связаться с разработчиком: <a href="https://t.me/khakimn" target="_blank">@khakimn</a></p>
+            <p>&copy; 2025 KaspiDonations. Все права защищены.</p>
         </div>
     </footer>
+
 </body>
 </html>
-
