@@ -3,14 +3,13 @@ import uuid
 import os
 import json
 import webbrowser
-from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sock import Sock
 from gtts import gTTS
 from datetime import datetime
-# ИСПРАВЛЕНИЕ: Импортируем gevent целиком
 import gevent
 
 # --- Настройка путей ---
@@ -75,7 +74,6 @@ class Settings(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-
 @app.context_processor
 def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
@@ -91,7 +89,8 @@ def broadcast_to_user(user_id, message_data):
                 print(f"❌ Не удалось отправить WebSocket сообщение клиенту пользователя {user_id}: {e}")
                 clients[user_id].remove(ws)
 
-def trigger_tts(text, user_id):
+def _create_tts_file(text, user_id):
+    """Внутренняя функция для создания TTS, запускается в отдельном потоке gevent."""
     with app.app_context():
         try:
             tts = gTTS(text, lang='ru')
@@ -99,11 +98,16 @@ def trigger_tts(text, user_id):
             full_path = os.path.join(TTS_CACHE_DIR, filename_part)
             tts.save(full_path)
             print(f"✅ TTS создан: {full_path}")
-            # ИСПРАВЛЕНИЕ: Генерируем относительный URL, убрав _external=True
             tts_url = url_for('serve_tts_cache', filename=filename_part)
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
+            # Убрана рекурсия, просто логируем ошибку
             print(f"❌ Ошибка создания TTS: {e}")
+
+def trigger_tts(text, user_id):
+    """Запускает создание TTS в безопасном для gevent фоновом потоке."""
+    gevent.spawn(_create_tts_file, text, user_id)
+
 
 def get_full_update_message(user_id):
     with app.app_context():
@@ -232,8 +236,7 @@ def submit_donation():
     
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        # ИСПРАВЛЕНИЕ: Используем gevent.spawn вместо threading.Thread
-        gevent.spawn(trigger_tts, tts_message, user.id)
+        trigger_tts(tts_message, user.id)
 
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success', 'message': 'Донат успешно добавлен.'})
@@ -267,8 +270,17 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
+
+    # ИСПРАВЛЕНИЕ: Принудительно отправляем show_alert для ручного доната
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+        trigger_tts(tts_message, user.id)
+
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
+
 
 @app.route('/api/reset_donations', methods=['POST'])
 def reset_donations():
@@ -301,8 +313,7 @@ def replay_donation(donation_id):
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        # ИСПРАВЛЕНИЕ: Используем gevent.spawn вместо threading.Thread
-        gevent.spawn(trigger_tts, tts_message, user.id)
+        trigger_tts(tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
@@ -317,8 +328,7 @@ def test_donation_api():
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     if user.settings.tts_enabled:
         tts_message = f"Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
-        # ИСПРАВЛЕНИЕ: Используем gevent.spawn вместо threading.Thread
-        gevent.spawn(trigger_tts, tts_message, user.id)
+        trigger_tts(tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status')
@@ -382,13 +392,12 @@ def ws(ws):
         initial_data = get_full_update_message(user_id)
         ws.send(json.dumps(initial_data, ensure_ascii=False))
 
-        # ИСПРАВЛЕНИЕ: Неблокирующий цикл для gevent
         while True:
-            gevent.sleep(25) # Пауза, не блокирующая Gunicorn
+            gevent.sleep(25)
             try:
                 ws.send(json.dumps({"type": "heartbeat"}))
             except Exception:
-                break # Клиент отключился
+                break
                 
     except Exception as e:
         print(f"WebSocket error for user {user_id}: {e}")
@@ -400,13 +409,9 @@ def ws(ws):
         print(f"🔌 WebSocket client disconnected for user {user_id}.")
 
 # --- Запуск ---
-# Этот блок выполняется только при локальном запуске файла (python server.py)
-# Gunicorn и Render не используют этот код.
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    # Отключаем debug в проде
     debug_mode = os.getenv('RENDER') != 'true'
-    # Используем стандартный app.run() для простоты локальной разработки
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
 
