@@ -108,10 +108,22 @@ body {
     margin-top: 30px;
 }
 
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.card-header .card-title {
+    margin: 0;
+}
+
 .card-title {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 700;
     margin: 0 0 20px 0;
+    color: #FFFFFF;
     padding-bottom: 15px;
     border-bottom: 1px solid rgba(136, 108, 255, 0.2);
     display: flex;
@@ -210,7 +222,18 @@ textarea {
 
 .btn-sm {
     padding: 6px 12px;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+}
+
+.btn-secondary {
+    background: rgba(108, 117, 125, 0.2);
+    border: 1px solid rgba(108, 117, 125, 0.3);
+    color: #FFFFFF;
+}
+
+.btn-secondary:hover {
+    background: rgba(108, 117, 125, 0.3);
+    border-color: rgba(108, 117, 125, 0.5);
 }
 
 /* Списки донатов */

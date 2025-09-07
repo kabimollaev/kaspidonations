@@ -186,9 +186,9 @@ document.addEventListener('DOMContentLoaded', function() {
         logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
         console.appendChild(logEntry);
         
-        // Ограничиваем количество сообщений до 50
+        // Ограничиваем количество сообщений до 4
         const entries = console.querySelectorAll('.console-entry');
-        if (entries.length > 50) {
+        if (entries.length > 4) {
             entries[0].remove();
         }
         
