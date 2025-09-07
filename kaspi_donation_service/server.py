@@ -552,7 +552,7 @@ def serve_media_files(filename):
 # --- Маршруты для виджетов ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
-    return render_template('alert.html', user_id=user_id)
+    return render_template('alert.html', user_id=user_id, cache_buster=int(time.time()))
 
 @app.route('/goal/<int:user_id>')
 def goal_widget(user_id):
