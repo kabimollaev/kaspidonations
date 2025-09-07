@@ -13,27 +13,20 @@
     </div>
     <script>
         function connectWebSocket() {
+            const userId = window.location.pathname.split('/')[2] || '1';
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
             ws.onopen = () => console.log('Latest donations widget connected');
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
                     updateLatestDonations(message.data.donations);
-                } else if (message.type === 'show_alert') {
-                    // Обновляем список при новом донате
-                    setTimeout(() => {
-                        fetch('/api/get_all_data')
-                            .then(r => r.json())
-                            .then(data => updateLatestDonations(data.donations))
-                            .catch(e => console.error('Failed to fetch donations:', e));
-                    }, 500);
                 }
             };
             ws.onclose = () => setTimeout(connectWebSocket, 3000);
         }
         function escapeHtml(unsafe) {
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+            return (unsafe || '').toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
         function updateLatestDonations(donations) {
             const list = document.getElementById('latest-donations-list');
