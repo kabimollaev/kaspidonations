@@ -1,139 +1,151 @@
-/* Общие стили для панели управления */
+/* =================================================================
+   РЕДИЗАЙН ПАНЕЛИ УПРАВЛЕНИЯ v2.0
+   Стиль: Kaspi (Темный + Красный)
+================================================================= */
+
+:root {
+    --primary-color: #F14635; /* Красный цвет Kaspi */
+    --primary-color-hover: #D93E2E;
+    --dark-bg: #1A1A1A;
+    --card-bg: #2C2C2C;
+    --text-light: #FFFFFF;
+    --text-muted: #A0AEC0;
+    --border-color: #3a3a3a;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+}
+
 body {
-    background-color: #10121B; /* Темный фон */
+    background-color: var(--dark-bg);
+    font-family: 'Inter', sans-serif;
+    color: var(--text-light);
+    margin: 0;
 }
 
 .dashboard-container {
     max-width: 1600px;
     margin: 0 auto;
-    padding: 20px 40px;
-    color: #E0E0E0;
+    padding: 30px 40px;
 }
 
+/* --- Шапка --- */
 .dashboard-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
-    margin-bottom: 30px;
-    border-bottom: 1px solid rgba(136, 108, 255, 0.2);
+    padding-bottom: 20px;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .dashboard-header h1 {
     font-size: 2.2rem;
     font-weight: 900;
     margin: 0;
-    background: linear-gradient(90deg, #886CFF, #6DD5FA);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-light);
 }
 
 .user-info {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 25px;
 }
 
 .user-info span, .user-info a {
     font-size: 0.9rem;
-    color: #A0AEC0;
+    color: var(--text-muted);
     text-decoration: none;
+    transition: color 0.3s ease;
 }
 
 .user-info a:hover {
-    color: #fff;
+    color: var(--primary-color);
 }
 
 .admin-link {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 6px 12px;
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 14px;
+    border-radius: 8px;
 }
 
-/* Секция API ключа */
-.api-key-section {
-    background: rgba(23, 26, 40, 0.8);
-    border: 1px solid rgba(136, 108, 255, 0.15);
+/* --- Основные блоки (API, Скачивание) --- */
+.api-key-section, .download-agent-section {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 30px;
+    padding: 24px 30px;
+    margin-bottom: 40px; /* Увеличенный отступ */
 }
 
-.api-key-section h3 {
+.api-key-section h3, .download-agent-section h3 {
     margin-top: 0;
-    font-size: 1.2rem;
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+}
+
+.api-key-section p, .download-agent-section p {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-top: 0;
+    margin-bottom: 20px;
 }
 
 .api-key-section input {
-    width: 100%;
-    background-color: rgba(0, 0, 0, 0.3);
-    border: 1px solid #333;
+    font-family: monospace;
 }
 
-.api-key-section p {
-    font-size: 0.85rem;
-    color: #A0AEC0;
-    margin-top: 10px;
-    margin-bottom: 0;
-}
-
-
-/* --- ИСПРАВЛЕННАЯ СТРУКТУРА СЕТКИ --- */
+/* --- Сетка --- */
 .main-grid {
     display: grid;
-    /* Явное определение областей для колонок */
     grid-template-areas: "left main right";
-    /* Определение размеров колонок */
     grid-template-columns: 300px 1fr 400px;
-    gap: 30px;
-    width: 100%; /* Убедимся, что сетка занимает всю ширину контейнера */
+    gap: 40px; /* Увеличенный отступ */
+    width: 100%;
 }
 
 .left-column { grid-area: left; }
 .main-content { grid-area: main; }
 .right-column { grid-area: right; }
 
-/* Стили карточек */
+/* --- Карточки --- */
 .card {
-    background: rgba(23, 26, 40, 0.8);
-    backdrop-filter: blur(5px);
-    border: 1px solid rgba(136, 108, 255, 0.15);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
-    padding: 24px;
+    padding: 30px;
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
 .card + .card {
-    margin-top: 30px;
+    margin-top: 40px; /* Увеличенный отступ */
 }
 
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
 }
 
 .card-header .card-title {
     margin: 0;
+    border-bottom: none;
+    padding-bottom: 0;
 }
 
 .card-title {
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     font-weight: 700;
-    margin: 0 0 20px 0;
-    color: #FFFFFF;
+    margin: 0 0 25px 0;
+    color: var(--text-light);
     padding-bottom: 15px;
-    border-bottom: 1px solid rgba(136, 108, 255, 0.2);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    border-bottom: 1px solid var(--border-color);
 }
 
-/* Формы */
+/* --- Формы --- */
 .form-group {
-    margin-bottom: 15px;
+    margin-bottom: 20px;
 }
 
 .form-group label {
@@ -141,18 +153,18 @@ body {
     margin-bottom: 8px;
     font-weight: 500;
     font-size: 0.9rem;
-    color: #A0AEC0;
+    color: var(--text-muted);
 }
 
 input[type="text"],
 input[type="number"],
 textarea {
     width: 100%;
-    padding: 12px;
-    background-color: rgba(0, 0, 0, 0.2);
-    border: 1px solid #333;
+    padding: 12px 16px;
+    background-color: var(--dark-bg);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    color: #E0E0E0;
+    color: var(--text-light);
     font-size: 1rem;
     box-sizing: border-box;
     transition: all 0.2s ease;
@@ -162,8 +174,8 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 textarea:focus {
     outline: none;
-    border-color: #886CFF;
-    box-shadow: 0 0 10px rgba(136, 108, 255, 0.3);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 10px rgba(241, 70, 53, 0.2);
 }
 
 textarea {
@@ -173,51 +185,50 @@ textarea {
 
 .form-actions {
     display: flex;
-    gap: 10px;
-    margin-top: 20px;
+    gap: 15px;
+    margin-top: 25px;
 }
 
-/* Кнопки */
+/* --- Кнопки --- */
 .btn {
-    padding: 10px 20px;
+    padding: 12px 24px;
     border: none;
     border-radius: 8px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.3s ease;
     text-decoration: none;
     display: inline-block;
     text-align: center;
+    font-size: 0.9rem;
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #886CFF, #6DD5FA);
+    background-color: var(--primary-color);
     color: white;
 }
-
 .btn-primary:hover {
+    background-color: var(--primary-color-hover);
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(136, 108, 255, 0.3);
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: #E0E0E0;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-light);
+    border: 1px solid var(--border-color);
 }
-
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--text-muted);
 }
 
 .btn-danger {
-    background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
+    background-color: var(--danger-color);
     color: white;
 }
-
 .btn-danger:hover {
+    background-color: #c82333;
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
 }
 
 .btn-sm {
@@ -225,32 +236,21 @@ textarea {
     font-size: 0.85rem;
 }
 
-.btn-secondary {
-    background: rgba(108, 117, 125, 0.2);
-    border: 1px solid rgba(108, 117, 125, 0.3);
-    color: #FFFFFF;
-}
-
-.btn-secondary:hover {
-    background: rgba(108, 117, 125, 0.3);
-    border-color: rgba(108, 117, 125, 0.5);
-}
-
-/* Списки донатов */
-.donations-list {
+/* --- Списки донатов --- */
+#donations-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 15px; /* ИСПРАВЛЕНИЕ: Добавлен отступ между донатами */
     max-height: 400px;
     overflow-y: auto;
-    padding-right: 10px; /* для скроллбара */
+    padding-right: 10px;
 }
 
 .donation-item {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--dark-bg);
     border-radius: 8px;
     padding: 15px;
-    border-left: 3px solid #886CFF;
+    border-left: 3px solid var(--primary-color);
 }
 .donation-item-header {
     display: flex;
@@ -258,90 +258,96 @@ textarea {
     font-weight: 700;
     margin-bottom: 5px;
 }
-.donation-name {
-    word-break: break-all;
-}
+.donation-name { word-break: break-all; }
 .donation-amount {
-    color: #6DD5FA;
+    color: var(--text-light);
+    font-weight: bold;
     white-space: nowrap;
     margin-left: 10px;
 }
 .donation-message {
     font-size: 0.9rem;
-    color: #A0AEC0;
-    margin: 5px 0 0 0;
+    color: var(--text-muted);
+    margin: 10px 0 0 0;
     word-break: break-word;
 }
+.donation-actions {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
 
-/* Checkbox & Range */
-.checkbox-group {
+/* --- Статус Phone Link --- */
+.status-indicator {
     display: flex;
     align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: var(--dark-bg);
+    border-radius: 8px;
 }
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: background-color 0.5s ease;
+}
+.status-connected { background-color: var(--success-color); }
+.status-disconnected { background-color: var(--danger-color); }
+
+/* --- Консоль --- */
+.console-output {
+    background-color: #111;
+    border-radius: 8px;
+    padding: 15px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.console-entry { color: var(--text-muted); }
+.console-time { color: #888; }
+.console-success { color: var(--success-color); }
+.console-error { color: var(--danger-color); }
+.console-warning { color: var(--warning-color); }
+
+/* --- Checkbox & Range --- */
+.checkbox-group { display: flex; align-items: center; }
 .styled-checkbox { display: none; }
-.checkbox-label {
-    position: relative;
-    padding-left: 30px;
-    cursor: pointer;
-    user-select: none;
-}
+.checkbox-label { position: relative; padding-left: 30px; cursor: pointer; user-select: none; }
 .checkbox-label::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
-    border: 2px solid #555;
-    border-radius: 4px;
-    background-color: rgba(0,0,0,0.2);
-    transition: all 0.2s ease;
+    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 18px; height: 18px; border: 2px solid var(--border-color); border-radius: 4px;
+    background-color: var(--dark-bg); transition: all 0.2s ease;
 }
 .checkbox-label::after {
-    content: '✔';
-    position: absolute;
-    left: 4px;
-    top: 50%;
-    transform: translateY(-50%) scale(0.5);
-    font-size: 16px;
-    color: #886CFF;
-    opacity: 0;
-    transition: all 0.2s ease;
+    content: '✓'; position: absolute; left: 4px; top: 50%;
+    transform: translateY(-50%) scale(0.5); font-size: 16px;
+    color: var(--primary-color); opacity: 0; transition: all 0.2s ease;
 }
 .styled-checkbox:checked + .checkbox-label::before {
-    background-color: rgba(136, 108, 255, 0.2);
-    border-color: #886CFF;
+    background-color: rgba(241, 70, 53, 0.2);
+    border-color: var(--primary-color);
 }
 .styled-checkbox:checked + .checkbox-label::after {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
+    opacity: 1; transform: translateY(-50%) scale(1);
 }
 
 input[type=range] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  background: transparent;
-}
-input[type=range]:focus {
-  outline: none;
+  -webkit-appearance: none; appearance: none;
+  width: 100%; background: transparent;
 }
 input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 8px;
-  cursor: pointer;
-  background: #333;
-  border-radius: 4px;
+  width: 100%; height: 8px; cursor: pointer;
+  background: var(--border-color); border-radius: 4px;
 }
 input[type=range]::-webkit-slider-thumb {
-  height: 20px;
-  width: 20px;
-  border-radius: 50%;
-  background: #886CFF;
-  cursor: pointer;
-  -webkit-appearance: none;
-  margin-top: -6px;
-  box-shadow: 0 0 10px rgba(136, 108, 255, 0.5);
+  height: 20px; width: 20px; border-radius: 50%;
+  background: var(--primary-color); cursor: pointer;
+  -webkit-appearance: none; margin-top: -6px;
+  box-shadow: 0 0 10px rgba(241, 70, 53, 0.5);
 }
 
