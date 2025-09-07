@@ -57,14 +57,12 @@
             text-align: center;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             min-width: 300px;
-            max-width: 90%;
         }
         .alert-main-text {
             font-weight: 700;
             font-size: 1.8rem;
             line-height: 1.2;
             margin: 0;
-            word-break: break-word;
         }
         .alert-main-text .highlight {
             color: #00D1B2;
@@ -84,54 +82,63 @@
     <div id="alert-container" class="alert-container"></div>
     <audio id="donation-sound"></audio>
     <script>
+        let ws;
         let alertQueue = [];
         let isShowingAlert = false;
-        let currentSettings = { min_amount: 0, tts_volume: 0.7 }; // Настройки по умолчанию
+        let currentSettings = {};
+        let lastShownAlertId = null;
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
-        // Убедитесь, что эти файлы существуют в static/media
+        
+        // Используем относительные пути, чтобы они работали везде
         const GIF_URL = '/static/media/alert.gif'; 
         const SOUND_URL = '/static/media/alert.mp3';
         const ALERT_DURATION = 8000;
 
         function connectWebSocket() {
-            const pathParts = window.location.pathname.split('/');
-            const userId = pathParts[pathParts.length - 1];
-            if (!userId) {
-                console.error('User ID не найден в URL');
-                return;
-            }
-
+            const userId = "{{ user_id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
+            
+            ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
-                console.log('[' + new Date().toLocaleTimeString() + '] WebSocket соединение установлено.');
+                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение установлено.`);
             };
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
-                if (message.type === 'full_update') {
-                    currentSettings = message.data.settings || { min_amount: 0, tts_volume: 0.7 };
-                } else if (message.type === 'show_alert') {
-                    // Проверяем минимальную сумму перед добавлением в очередь
-                    if (message.data.amount >= currentSettings.min_amount) {
-                        alertQueue.push(message.data);
-                        processQueue();
-                    }
+                if (message.type === 'show_alert') {
+                    console.log('Получена команда show_alert:', message.data);
+                    alertQueue.push(message.data);
+                    processQueue();
                 } else if (message.type === 'tts') {
-                    playTTS(message.url, currentSettings.tts_volume);
+                    playTTS(message.url, currentSettings.tts_volume || 0.7);
+                } else if (message.type === 'full_update') {
+                    currentSettings = message.data.settings || {};
+                    const latestDonation = message.data.donations?.[0];
+                    // ИСПРАВЛЕНИЕ: Проверяем, что донат новый, и добавляем в очередь
+                    if (latestDonation && latestDonation.id !== lastShownAlertId) {
+                         const now = Date.now();
+                         const donationTime = new Date(latestDonation.timestamp).getTime();
+                         // Показываем только свежие донаты (не старше 30 секунд), чтобы не спамить при перезагрузке
+                         if ((now - donationTime) < 30000) {
+                            console.log('Обнаружен новый донат в full_update:', latestDonation);
+                            alertQueue.push(latestDonation);
+                            processQueue();
+                         }
+                    }
                 }
             };
             
-            ws.onclose = () => {
-                console.log('[' + new Date().toLocaleTimeString() + '] WebSocket соединение закрыто. Попытка переподключения...');
+            ws.onclose = (event) => {
+                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение закрыто. Код: ${event.code}. Попытка переподключения...`);
                 setTimeout(connectWebSocket, 3000);
             };
 
             ws.onerror = (error) => {
-                console.error('WebSocket Error:', error);
+                console.error('WebSocket ошибка:', error);
                 ws.close();
             };
         }
@@ -139,10 +146,20 @@
         function processQueue() {
             if (isShowingAlert || alertQueue.length === 0) return;
             isShowingAlert = true;
-            showAlert(alertQueue.shift());
+            const data = alertQueue.shift();
+            
+            if (data.id === lastShownAlertId) {
+                console.log('Пропускаем дублирующийся алерт:', data.id);
+                isShowingAlert = false;
+                processQueue();
+                return;
+            }
+            lastShownAlertId = data.id;
+            showAlert(data);
         }
 
         function showAlert(data) {
+            console.log('Показываем алерт для:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             alertContainer.innerHTML = `
@@ -155,12 +172,11 @@
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
                     </div>
                 </div>`;
-            
             const alertBox = alertContainer.querySelector('.alert-box');
             
             try {
                 donationSound.src = SOUND_URL;
-                donationSound.volume = currentSettings.tts_volume;
+                donationSound.volume = currentSettings.tts_volume || 0.7;
                 donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
             } catch (e) {
                 console.warn(`Не удалось загрузить звук ${SOUND_URL}.`);
@@ -173,7 +189,7 @@
                 alertContainer.innerHTML = '';
                 isShowingAlert = false;
                 processQueue();
-            }, ALERT_DURATION + 500);
+            }, ALERT_DURATION + 1000);
         }
 
         function playTTS(url, volume) {
@@ -185,6 +201,7 @@
         }
 
         function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
