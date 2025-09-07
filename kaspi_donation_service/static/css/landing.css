@@ -135,7 +135,7 @@ body, html {
     line-height: 1.6;
 }
 
-/* --- Features Section --- */
+/* --- Sections --- */
 .features, .pricing, .contact {
     padding: 100px 0;
     text-align: center;
@@ -251,3 +251,4 @@ body, html {
     border-top: 1px solid var(--border-color);
     color: var(--text-muted);
 }
+
