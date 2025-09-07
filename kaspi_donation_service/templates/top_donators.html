@@ -35,10 +35,11 @@
                     return;
                 }
                 
-                listElement.innerHTML = sorted.map(([name, amount]) => `
-                    <div class="list-item">
-                        <span class="list-item-name">${escapeHtml(name)}</span>
-                        <span class="list-item-amount">${amount.toLocaleString('ru-RU')} ₸</span>
+                listElement.innerHTML = sorted.map(([name, amount], index) => `
+                    <div class="donator-item">
+                        <span class="donator-rank">#${index + 1}</span>
+                        <span class="donator-name">${escapeHtml(name)}</span>
+                        <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
                     </div>
                 `).join('');
             }

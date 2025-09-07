@@ -175,31 +175,24 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // --- Логирование в консоль на странице ---
+    // --- Логирование в консоль ---
     function logToConsole(message, type = 'info') {
-        if (!elements.consoleOutput) return;
+        const console = elements.consoleOutput;
+        if (!console) return;
         
-        const now = new Date();
-        const timestamp = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
-
-        const p = document.createElement('p');
-        p.className = `log-${type}`;
-
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'log-time';
-        timeSpan.textContent = `${timestamp} `;
-
-        p.appendChild(timeSpan);
-        p.appendChild(document.createTextNode(message));
-
-        elements.consoleOutput.appendChild(p);
-        elements.consoleOutput.scrollTop = elements.consoleOutput.scrollHeight;
+        const timestamp = new Date().toLocaleTimeString('ru-RU');
+        const logEntry = document.createElement('div');
+        logEntry.className = `console-entry console-${type}`;
+        logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
+        console.appendChild(logEntry);
         
-        // Ограничиваем количество сообщений
-        const logs = elements.consoleOutput.children;
-        if (logs.length > 100) {
-            elements.consoleOutput.removeChild(logs[0]);
+        // Ограничиваем количество сообщений до 50
+        const entries = console.querySelectorAll('.console-entry');
+        if (entries.length > 50) {
+            entries[0].remove();
         }
+        
+        console.scrollTop = console.scrollHeight;
     }
 
     // --- WebSocket ---
@@ -313,11 +306,13 @@ document.addEventListener('DOMContentLoaded', function() {
     loadData();
     initEventListeners();
     
-    // Периодически обновляем статус Phone Link
-    setInterval(async () => {
-        const status = await fetchApi('/get_phone_status');
-        if (status) {
-            updatePhoneStatus(status);
-        }
-    }, 5000);
+    // Периодически обновляем статус Phone Link (только если элемент существует)
+    if (elements.phoneStatus) {
+        setInterval(async () => {
+            const status = await fetchApi('/get_phone_status');
+            if (status) {
+                updatePhoneStatus(status);
+            }
+        }, 10000); // Увеличен интервал до 10 секунд
+    }
 });
