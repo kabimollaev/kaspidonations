@@ -395,39 +395,6 @@ def add_manual_donation():
     return jsonify({"status": "success", "message": "Донат успешно добавлен.", "donation": {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message, 'timestamp': new_donation.timestamp.isoformat()}})
 
 
-@app.route('/api/test_donation', methods=['POST'])
-@login_required
-def test_donation():
-    user_id = current_user.id
-    name = 'Тестовый донат'
-    amount = 100.0
-    message = 'Это тестовый донат для проверки!'
-
-    new_donation = Donation(
-        name=name,
-        amount=amount,
-        message=message,
-        user_id=user_id
-    )
-
-    db.session.add(new_donation)
-    
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    if not goal:
-        goal = Goal(user_id=user_id)
-        db.session.add(goal)
-    goal.current_amount += amount
-    db.session.commit()
-    
-    broadcast(get_full_update_message(user_id), user_id)
-    
-    settings = Settings.query.filter_by(user_id=user_id).first()
-    if settings and settings.tts_enabled and amount >= settings.min_amount:
-        pass
-    
-    return jsonify({"status": "success", "message": "Тестовый донат отправлен."})
-
-
 @app.route('/api/reset_donations', methods=['POST'])
 @login_required
 def reset_donations():
@@ -481,7 +448,7 @@ def replay_donation(donation_id):
 
 @app.route('/api/test_donation', methods=['POST'])
 @login_required
-def test_donation():
+def test_donation_api():
     user_id = current_user.id
     
     # Создаем тестовый донат
