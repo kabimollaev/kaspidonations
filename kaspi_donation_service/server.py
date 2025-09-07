@@ -547,7 +547,7 @@ def top_donators_widget(user_id):
     return render_template('top_donators.html', user_id=user_id)
 
 
-# WebSocket - Non-blocking approach for Gunicorn compatibility
+# WebSocket - Keep alive without blocking workers
 @sock.route('/ws')
 def ws_route(ws):
     user_id = request.args.get('user_id', 1)
@@ -559,12 +559,21 @@ def ws_route(ws):
         # Send initial data
         ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
         
-        # Don't block - just return immediately after setup
-        # The connection will stay alive and we can send messages via broadcast
-        return
+        # Keep connection alive with minimal blocking
+        while True:
+            try:
+                # Use very short timeout to avoid worker timeout
+                data = ws.receive(timeout=0.01)
+                if data is None:
+                    break
+                # Handle ping/pong or other messages if needed
+            except Exception:
+                # Continue on timeout or other exceptions
+                pass
                 
     except Exception as e:
         print(f"❌ WebSocket error for user {user_id}: {e}")
+    finally:
         if ws in app.clients:
             app.clients.remove(ws)
             print(f"🔌 WebSocket client disconnected for user {user_id}. Total clients: {len(app.clients)}")
