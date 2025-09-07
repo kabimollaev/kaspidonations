@@ -86,53 +86,43 @@
         let alertQueue = [];
         let isShowingAlert = false;
         let currentSettings = {};
-        let lastShownAlertId = null;
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
         const GIF_URL = '/static/media/alert.gif'; 
         const SOUND_URL = '/static/media/alert.mp3';
         const ALERT_DURATION = 8000;
+        const USER_ID = window.location.pathname.split('/')[2] || '1';
 
-        function connectSSE() {
-            const userId = window.location.pathname.split('/')[2] || '1';
-            const eventSource = new EventSource(`/events/${userId}`);
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${USER_ID}`);
             
-            eventSource.onopen = () => {
-                console.log('[' + new Date().toLocaleTimeString() + '] SSE соединение установлено.');
+            ws.onopen = () => {
+                console.log('WebSocket connection established.');
             };
             
-            eventSource.onmessage = (event) => {
+            ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                console.log('Alert widget received SSE message:', message);
+                console.log('Alert widget received message:', message);
                 
                 if (message.type === 'show_alert') {
-                    console.log('Processing show_alert message:', message.data);
                     alertQueue.push(message.data);
                     processQueue();
-                } else if (message.type === 'heartbeat') {
-                    // Ignore heartbeat messages
-                    console.log('Received heartbeat from server');
                 } else if (message.type === 'tts') {
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
-                    const latestDonation = message.data.donations?.[0];
-                    if (latestDonation && latestDonation.id !== lastShownAlertId) {
-                        const donationTime = new Date(latestDonation.timestamp).getTime() / 1000;
-                        const now = Date.now() / 1000;
-                        if ((now - donationTime) < 30) {
-                            console.log('Adding latest donation to queue:', latestDonation);
-                            alertQueue.push(latestDonation);
-                            processQueue();
-                        }
-                    }
                 }
             };
             
-            eventSource.onerror = (error) => {
-                console.log('[' + new Date().toLocaleTimeString() + '] SSE соединение закрыто. Попытка переподключения...');
-                eventSource.close();
-                setTimeout(connectSSE, 3000);
+            ws.onclose = () => {
+                console.log('WebSocket connection closed. Reconnecting...');
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+                ws.close();
             };
         }
 
@@ -140,14 +130,6 @@
             if (isShowingAlert || alertQueue.length === 0) return;
             isShowingAlert = true;
             const data = alertQueue.shift();
-            console.log('Processing alert from queue:', data);
-            if (data.id === lastShownAlertId) {
-                console.log('Skipping duplicate alert:', data.id);
-                isShowingAlert = false;
-                processQueue();
-                return;
-            }
-            lastShownAlertId = data.id;
             showAlert(data);
         }
 
@@ -169,9 +151,9 @@
             try {
                 donationSound.src = SOUND_URL;
                 donationSound.volume = currentSettings.tts_volume || 0.7;
-                donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
+                donationSound.play().catch(e => console.error("Could not play donation sound.", e));
             } catch (e) {
-                console.warn(`Не удалось загрузить звук ${SOUND_URL}.`);
+                console.warn(`Could not load sound ${SOUND_URL}.`);
             }
             setTimeout(() => alertBox.classList.add('visible'), 100);
             setTimeout(() => alertBox.classList.remove('visible'), ALERT_DURATION);
@@ -186,16 +168,21 @@
             setTimeout(() => {
                 const ttsAudio = new Audio(url);
                 ttsAudio.volume = volume;
-                ttsAudio.play().catch(e => console.error("Не удалось воспроизвести озвучку.", e));
+                ttsAudio.play().catch(e => console.error("Could not play TTS audio.", e));
             }, 1000);
         }
 
         function escapeHtml(unsafe) {
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+            return (unsafe || '').toString()
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
         }
 
-        // Подключение к SSE при загрузке страницы
-        connectSSE();
+        connectWebSocket();
     </script>
 </body>
 </html>
+
