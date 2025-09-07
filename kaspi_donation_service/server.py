@@ -19,7 +19,6 @@ from functools import wraps
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
-DOWNLOADS_DIR = os.path.join(basedir, 'static', 'downloads')
 
 # --- Конфигурация приложения ---
 app = Flask(__name__)
@@ -32,7 +31,6 @@ os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
 TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
 os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -87,7 +85,6 @@ def inject_cache_buster():
 
 # --- Фоновые задачи ---
 def cleanup_tts_files():
-    """Периодически удаляет старые TTS файлы."""
     while True:
         try:
             now = datetime.now()
@@ -97,10 +94,9 @@ def cleanup_tts_files():
                     file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
                     if now - file_mod_time > timedelta(minutes=10):
                         os.remove(file_path)
-                        print(f"🗑️  Удален старый TTS файл: {filename}")
         except Exception as e:
             print(f"❌ Ошибка при очистке TTS кэша: {e}")
-        gevent.sleep(60 * 15) # Пауза 15 минут
+        gevent.sleep(60 * 15)
 
 # --- Функции для Real-time обновлений ---
 def broadcast_to_user(user_id, message_data):
@@ -109,23 +105,22 @@ def broadcast_to_user(user_id, message_data):
         for ws in list(clients[user_id]):
             try:
                 ws.send(message_str)
-            except Exception as e:
-                print(f"❌ Не удалось отправить WebSocket сообщение клиенту пользователя {user_id}: {e}")
+            except Exception:
                 clients[user_id].remove(ws)
 
 def tts_task(text, user_id):
-    """Задача для генерации TTS в отдельном потоке gevent."""
-    with app.app_context():
-        try:
-            tts = gTTS(text, lang='ru')
-            filename_part = f'tts_{uuid.uuid4()}.mp3'
-            full_path = os.path.join(TTS_CACHE_DIR, filename_part)
-            tts.save(full_path)
-            print(f"✅ TTS создан: {full_path}")
-            tts_url = url_for('serve_tts_cache', filename=filename_part)
-            broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
-        except Exception as e:
-            print(f"❌ Ошибка создания TTS: {e}")
+    # ИСПРАВЛЕНИЕ: Эта функция теперь не требует контекста приложения
+    try:
+        tts = gTTS(text, lang='ru')
+        filename_part = f'tts_{uuid.uuid4()}.mp3'
+        full_path = os.path.join(TTS_CACHE_DIR, filename_part)
+        tts.save(full_path)
+        print(f"✅ TTS создан: {full_path}")
+        # Создаем относительный URL вручную, чтобы избежать ошибки контекста
+        tts_url = f"/tts_cache/{filename_part}"
+        broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
+    except Exception as e:
+        print(f"❌ Ошибка создания TTS: {e}")
 
 def get_full_update_message(user_id):
     with app.app_context():
@@ -143,27 +138,22 @@ def get_full_update_message(user_id):
 
         return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
 
-# --- Декоратор для API аутентификации ---
+# --- Декоратор для API ---
 def api_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if current_user.is_authenticated:
             g.user = current_user
             return f(*args, **kwargs)
-
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
-        if not api_key:
-            return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
-        
+        api_key = request.headers.get('X-API-Key')
+        if not api_key: return jsonify({'error': 'Доступ запрещен'}), 401
         user = User.query.filter_by(api_key=api_key).first()
-        if not user or user.status != 'active':
-            return jsonify({'error': 'Неверный API-ключ или пользователь неактивен.'}), 403
-        
+        if not user or user.status != 'active': return jsonify({'error': 'Неверный API-ключ'}), 403
         g.user = user
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Маршруты ---
+# --- Основные маршруты ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -194,11 +184,9 @@ def register():
             new_user = User(username=request.form.get('username'), password_hash=hashed_pw)
             db.session.add(new_user)
             db.session.commit()
-            
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-
             flash('Регистрация прошла успешно! Ожидайте активации.', 'success')
             return redirect(url_for('login'))
     return render_template('register.html')
@@ -228,18 +216,12 @@ def update_user(user_id):
     user = db.session.get(User, user_id)
     if not user:
         flash(f'Пользователь с ID {user_id} не найден.', 'error')
-        return redirect(url_for('admin_panel'))
-    user.role = request.form.get('role')
-    user.status = request.form.get('status')
-    db.session.commit()
-    flash(f'Данные пользователя {user.username} обновлены.', 'success')
+    else:
+        user.role = request.form.get('role')
+        user.status = request.form.get('status')
+        db.session.commit()
+        flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
-
-# ИСПРАВЛЕНИЕ: Маршрут для скачивания агента
-@app.route('/download/agent')
-@login_required
-def download_agent():
-    return send_from_directory(DOWNLOADS_DIR, 'KaspiDonationsAgent.exe', as_attachment=True)
 
 # --- API ---
 @app.route('/api/get_all_data', methods=['GET'])
@@ -254,22 +236,19 @@ def submit_donation():
     data = request.get_json()
     if not data or 'name' not in data or 'amount' not in data:
         return jsonify({'error': 'Отсутствуют обязательные поля.'}), 400
-
     new_donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=user.id)
     db.session.add(new_donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    
     donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
         gevent.spawn(tts_task, tts_message, user.id)
-
     broadcast_to_user(user.id, get_full_update_message(user.id))
-    return jsonify({'status': 'success', 'message': 'Донат успешно добавлен.'})
+    return jsonify({'status': 'success'})
 
+# ... (Остальные API маршруты без изменений) ...
 @app.route('/api/update_goal', methods=['POST'])
 @api_login_required
 def update_goal():
@@ -302,14 +281,11 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
         gevent.spawn(tts_task, tts_message, user.id)
-        
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -329,7 +305,7 @@ def delete_donation(donation_id):
     user = g.user
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
-        return jsonify({'error': 'Donation not found or unauthorized'}), 404
+        return jsonify({'error': 'Донат не найден'}), 404
     user.goal.current_amount -= donation.amount
     db.session.delete(donation)
     db.session.commit()
@@ -342,7 +318,7 @@ def replay_donation(donation_id):
     user = g.user
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
-        return jsonify({'error': 'Donation not found or unauthorized'}), 404
+        return jsonify({'error': 'Донат не найден'}), 404
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
@@ -354,15 +330,10 @@ def replay_donation(donation_id):
 @api_login_required
 def test_donation_api():
     user = g.user
-    test_donation_data = {
-        'id': f"test_{int(time.time())}",
-        'name': 'Тестер',
-        'amount': 100,
-        'message': 'Это тестовый донат для проверки оповещений!'
-    }
+    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     if user.settings.tts_enabled:
-        tts_message = f"Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
+        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
         gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
@@ -380,7 +351,8 @@ def update_phone_status():
     broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
     return jsonify({'status': 'success'})
 
-# --- ВИДЖЕТЫ ---
+
+# --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
     return render_template('alert.html', user_id=user_id)
@@ -416,42 +388,25 @@ def ws(ws):
     if not user_id:
         if current_user.is_authenticated:
             user_id = current_user.id
-        else:
-            ws.close(reason=1008, message="User ID is required")
-            return
-
+        else: return
     if user_id not in clients:
         clients[user_id] = set()
     clients[user_id].add(ws)
     print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
-
     try:
-        initial_data = get_full_update_message(user_id)
-        ws.send(json.dumps(initial_data, ensure_ascii=False))
-
+        ws.send(json.dumps(get_full_update_message(user_id), ensure_ascii=False))
         while True:
             gevent.sleep(25)
             try:
                 ws.send(json.dumps({"type": "heartbeat"}))
             except Exception:
                 break 
-                
-    except Exception as e:
-        print(f"WebSocket error for user {user_id}: {e}")
     finally:
         if user_id in clients and ws in clients[user_id]:
             clients[user_id].remove(ws)
-            if not clients[user_id]:
-                del clients[user_id]
         print(f"🔌 WebSocket client disconnected for user {user_id}.")
 
 # --- Запуск ---
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    
+if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
-    
-    debug_mode = os.getenv('RENDER') != 'true'
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
 
