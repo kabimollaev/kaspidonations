@@ -552,17 +552,18 @@ def ws_route(ws):
         ws.user_id = int(user_id)
         app.clients.add(ws)
         ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
+        
+        # Use a shorter timeout and immediate return pattern
         while True:
             try:
-                data = ws.receive(timeout=30)  # 30 second timeout
+                data = ws.receive(timeout=5)  # Very short timeout
                 if data is None: 
                     break
+                # Process any received data here if needed
             except Exception:
-                # Timeout or connection error - send ping to keep alive
-                try:
-                    ws.send(json.dumps({"type": "ping"}, ensure_ascii=False))
-                except:
-                    break
+                # On timeout, just continue the loop - this prevents worker timeout
+                continue
+                
     except Exception:
         pass
     finally:
