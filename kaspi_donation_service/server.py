@@ -23,15 +23,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Создаем папки при старте, если их нет
 os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
-os.makedirs(os.path.join(basedir, 'tts_cache'), exist_ok=True)
+TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
+os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+sock = Sock(app)
 
-# Инициализация хранилища для сообщений SSE
-app.sse_messages = {}
+# Хранилище для WebSocket клиентов
+# Ключ - user_id, значение - set с объектами ws
+clients = {}
 
 # --- Модели Базы Данных ---
 class User(UserMixin, db.Model):
@@ -76,21 +79,32 @@ def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
 # --- Функции для Real-time обновлений ---
-def broadcast_to_user(user_id, message_type, data=None):
-    message = {'type': message_type, 'data': data, 'timestamp': datetime.now().isoformat()}
-    if user_id not in app.sse_messages:
-        app.sse_messages[user_id] = []
-    app.sse_messages[user_id].append(message)
-    if len(app.sse_messages[user_id]) > 10:
-        app.sse_messages[user_id] = app.sse_messages[user_id][-10:]
+def broadcast_to_user(user_id, message_data):
+    if user_id in clients:
+        message_str = json.dumps(message_data, ensure_ascii=False)
+        # Создаем копию сета, чтобы избежать ошибок при изменении сета во время итерации
+        for ws in list(clients[user_id]):
+            try:
+                ws.send(message_str)
+            except Exception as e:
+                print(f"❌ Не удалось отправить WebSocket сообщение клиенту пользователя {user_id}: {e}")
+                # Удаляем "мертвое" соединение
+                clients[user_id].remove(ws)
 
 def trigger_tts(text, user_id):
     with app.app_context():
         try:
             tts = gTTS(text, lang='ru')
-            filename = os.path.join('tts_cache', f'tts_{int(time.time())}.mp3')
-            tts.save(filename)
-            broadcast_to_user(user_id, "tts", {"url": f'/{filename.replace(os.sep, "/")}'})
+            # Используем uuid для уникальности имени файла
+            filename_part = f'tts_{uuid.uuid4()}.mp3'
+            full_path = os.path.join(TTS_CACHE_DIR, filename_part)
+            tts.save(full_path)
+            print(f"✅ TTS создан: {full_path}")
+            
+            # Собираем URL для клиента
+            tts_url = url_for('serve_tts_cache', filename=filename_part, _external=True)
+            
+            broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
             print(f"❌ Ошибка создания TTS: {e}")
 
@@ -183,19 +197,19 @@ def update_user(user_id):
 
 # --- ВИДЖЕТЫ (ИСПРАВЛЕНО) ---
 @app.route('/alert/<int:user_id>')
-def alert(user_id):
+def alert_widget(user_id):
     return render_template('alert.html', user_id=user_id)
 
 @app.route('/goal/<int:user_id>')
-def goal(user_id):
+def goal_widget(user_id):
     return render_template('goal.html', user_id=user_id)
 
 @app.route('/top_donators/<int:user_id>')
-def top_donators(user_id):
+def top_donators_widget(user_id):
     return render_template('top_donators.html', user_id=user_id)
 
 @app.route('/latest_donations/<int:user_id>')
-def latest_donations(user_id):
+def latest_donations_widget(user_id):
     return render_template('latest_donations.html', user_id=user_id)
     
 @app.route('/latest_donations_popout/<int:user_id>')
@@ -203,32 +217,42 @@ def latest_donations_popout(user_id):
     return render_template('latest_donations_popout.html', user_id=user_id)
 
 
-# --- SSE ---
-@app.route('/events/<int:user_id>')
-def events(user_id):
-    def event_stream():
-        with app.app_context():
-            last_message_count = len(app.sse_messages.get(user_id, []))
-            initial_data = get_full_update_message(user_id)
-            yield f"data: {json.dumps(initial_data, ensure_ascii=False)}\n\n"
-        
-        while True:
-            try:
-                if user_id in app.sse_messages:
-                    messages = app.sse_messages[user_id]
-                    if len(messages) > last_message_count:
-                        for message in messages[last_message_count:]:
-                            yield f"data: {json.dumps(message, ensure_ascii=False)}\n\n"
-                        last_message_count = len(messages)
-                
-                time.sleep(1)
-            except GeneratorExit:
-                break
-            except Exception as e:
-                print(f"❌ SSE error for user {user_id}: {e}")
-                break
+# --- WebSocket Route ---
+@sock.route('/ws')
+def ws(ws):
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        ws.close(reason=1008, message="User ID is required")
+        return
+
+    # Регистрация клиента
+    if user_id not in clients:
+        clients[user_id] = set()
+    clients[user_id].add(ws)
+    print(f"🔗 WebSocket client connected for user {user_id}. Total clients for user: {len(clients[user_id])}")
+
+    try:
+        # Отправляем начальное состояние
+        initial_data = get_full_update_message(user_id)
+        ws.send(json.dumps(initial_data, ensure_ascii=False))
+
+        # Держим соединение открытым
+        while not ws.closed:
+            # Просто ждем, можно добавить обработку входящих сообщений при необходимости
+            message = ws.receive(timeout=30) # timeout to prevent indefinite blocking
+            if message is None: # timeout occurred
+                ws.send(json.dumps({"type": "heartbeat"}))
     
-    return Response(event_stream(), mimetype="text/event-stream")
+    except Exception as e:
+        print(f"WebSocket error for user {user_id}: {e}")
+    finally:
+        # Удаление клиента при отключении
+        if user_id in clients and ws in clients[user_id]:
+            clients[user_id].remove(ws)
+            if not clients[user_id]:
+                del clients[user_id]
+        print(f"🔌 WebSocket client disconnected for user {user_id}.")
+
 
 # --- Запуск ---
 if __name__ == '__main__':
