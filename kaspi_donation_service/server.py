@@ -72,8 +72,6 @@ class Settings(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    # This function should not have a legacy warning.
-    # Using Session.get() is the modern approach.
     return db.session.get(User, int(user_id))
 
 
@@ -197,12 +195,9 @@ def update_user(user_id):
 @app.before_request
 def before_request_api():
     if request.path.startswith('/api/'):
-        # ИСПРАВЛЕНИЕ: Сначала проверяем аутентификацию по сессии.
-        # Если пользователь уже залогинен, ничего не делаем.
         if current_user.is_authenticated:
             return
 
-        # Если сессии нет, тогда проверяем API ключ (для agent.py)
         api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
         if not api_key:
             return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
@@ -365,7 +360,6 @@ def serve_media_files(filename):
 # --- WebSocket ---
 @sock.route('/ws')
 def ws(ws):
-    # ИСПРАВЛЕНИЕ: Определяем user_id по сессии, если он не передан в URL
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         if current_user.is_authenticated:
@@ -383,7 +377,8 @@ def ws(ws):
         initial_data = get_full_update_message(user_id)
         ws.send(json.dumps(initial_data, ensure_ascii=False))
 
-        while not ws.closed:
+        # ИСПРАВЛЕНИЕ: Правильный цикл для flask-sock
+        while True:
             message = ws.receive(timeout=30)
             if message is None:
                 ws.send(json.dumps({"type": "heartbeat"}))
