@@ -34,7 +34,7 @@ app.clients = set()
 # Глобальные переменные для статуса Phone Link
 PHONE_STATUS = {
     "connected": False,
-    "message": "Поиск Phone Link...",
+    "message": "Отключен",
     "last_check": None
 }
 
@@ -121,7 +121,7 @@ def get_full_update_message(user_id):
     settings = Settings.query.filter_by(user_id=user_id).first()
 
     donations_list = [
-        {'id': int(d.id), 'name': d.name, 'amount': float(d.amount), 'message': d.message}
+        {'id': int(d.id), 'name': d.name, 'amount': float(d.amount), 'message': d.message, 'timestamp': d.timestamp.isoformat()}
         for d in donations
     ]
     
@@ -484,8 +484,10 @@ def test_donation_api():
         "id": test_donation_data.id,
         "name": 'Тестер',
         "amount": 100.0,
-        "message": 'Это тестовый донат для проверки оповещений!'
+        "message": 'Это тестовый донат для проверки оповещений!',
+        "timestamp": test_donation_data.timestamp.isoformat()
     }
+    print(f"Broadcasting test donation alert: {donation_data}")
     broadcast({'type': 'show_alert', 'data': donation_data}, user_id)
     
     # TTS если включен

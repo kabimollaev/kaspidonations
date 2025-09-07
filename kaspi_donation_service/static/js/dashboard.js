@@ -55,23 +55,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function updatePhoneStatus(status) {
         if (!elements.phoneStatusIndicator) return;
         
-        const statusDot = elements.phoneStatusIndicator.querySelector('.status-dot');
-        const statusText = elements.phoneStatusIndicator.querySelector('.status-text');
+        const indicator = elements.phoneStatusIndicator;
+        const dot = indicator.querySelector('.status-dot');
+        const text = indicator.querySelector('.status-text');
         
-        if (status.connected) {
-            statusDot.className = 'status-dot connected';
-            statusText.textContent = status.message;
-            if (lastPhoneStatus !== status.message) {
-                logToConsole(`📱 Phone Link: ${status.message}`, 'info');
-                lastPhoneStatus = status.message;
-            }
+        if (status && status.connected) {
+            dot.className = 'status-dot status-connected';
+            text.textContent = status.message || 'Подключен';
+        } else if (status) {
+            dot.className = 'status-dot status-disconnected';
+            text.textContent = status.message || 'Отключен';
         } else {
-            statusDot.className = 'status-dot disconnected';
-            statusText.textContent = status.message;
-            if (lastPhoneStatus !== status.message) {
-                logToConsole(`📱 Phone Link: ${status.message}`, 'warning');
-                lastPhoneStatus = status.message;
-            }
+            dot.className = 'status-dot status-disconnected';
+            text.textContent = 'Нет данных';
         }
     }
 
@@ -147,14 +143,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateForms() {
-        if (currentData.goal) {
-            elements.goalTitleInput.value = currentData.goal.title;
-            elements.goalTargetInput.value = currentData.goal.target_amount;
+        if (currentData.goal && elements.goalTitleInput) {
+            elements.goalTitleInput.value = currentData.goal.title || '';
+            elements.goalTargetInput.value = currentData.goal.target_amount || '';
         }
-        if (currentData.settings) {
-            elements.minAmountInput.value = currentData.settings.min_amount;
-            elements.ttsEnabledInput.checked = currentData.settings.tts_enabled;
-            elements.ttsVolumeInput.value = currentData.settings.tts_volume;
+        if (currentData.settings && elements.minAmountInput) {
+            elements.minAmountInput.value = currentData.settings.min_amount || 0;
+            elements.ttsEnabledInput.checked = currentData.settings.tts_enabled || false;
+            elements.ttsVolumeInput.value = currentData.settings.tts_volume || 0.7;
         }
     }
 
@@ -233,10 +229,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     amount: parseFloat(formData.get('amount')),
                     message: formData.get('message')
                 };
-                const result = await fetchApi('/add_manual_donation', 'POST', data);
+                const result = await fetchApi('/api/add_manual_donation', 'POST', data);
                 if (result && result.status === 'success') {
                     logToConsole(`➕ Добавлен донат: ${data.name} - ${data.amount}₸`, 'success');
                     e.target.reset();
+                    // Обновляем данные после добавления
+                    setTimeout(() => loadData(), 500);
                 }
             });
         }
@@ -248,9 +246,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     title: elements.goalTitleInput.value,
                     target: parseFloat(elements.goalTargetInput.value)
                 };
-                const result = await fetchApi('/update_goal', 'POST', data);
+                const result = await fetchApi('/api/update_goal', 'POST', data);
                 if (result && result.status === 'success') {
                     logToConsole(`🎯 Цель обновлена: ${data.title} - ${data.target}₸`, 'info');
+                    // Обновляем данные после сохранения
+                    loadData();
                 }
             });
         }
@@ -263,9 +263,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     tts_enabled: elements.ttsEnabledInput.checked,
                     tts_volume: parseFloat(elements.ttsVolumeInput.value)
                 };
-                const result = await fetchApi('/update_settings', 'POST', data);
+                const result = await fetchApi('/api/update_settings', 'POST', data);
                 if (result && result.status === 'success') {
                     logToConsole(`⚙️ Настройки обновлены`, 'info');
+                    // Обновляем данные после сохранения
+                    loadData();
                 }
             });
         }
@@ -273,9 +275,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
                 if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
-                    const result = await fetchApi('/reset_donations', 'POST');
+                    const result = await fetchApi('/api/reset_donations', 'POST');
                     if (result && result.status === 'success') {
                         logToConsole(`🗑️ История донатов сброшена`, 'warning');
+                        // Обновляем данные после сброса
+                        setTimeout(() => loadData(), 500);
                     }
                 }
             });
@@ -283,9 +287,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.testDonationBtn) {
             elements.testDonationBtn.addEventListener('click', async () => {
-                const result = await fetchApi('/test_donation', 'POST');
+                const result = await fetchApi('/api/test_donation', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole('🧪 Тестовый донат отправлен', 'info');
+                    // Обновляем данные после тестового доната
+                    setTimeout(() => loadData(), 500);
                 }
             });
         }
@@ -293,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Загрузка данных ---
     async function loadData() {
-        const data = await fetchApi('/get_all_data');
+        const data = await fetchApi('/api/get_all_data');
         if (data) {
             currentData = data;
             renderAll();
@@ -307,9 +313,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initEventListeners();
     
     // Периодически обновляем статус Phone Link (только если элемент существует)
-    if (elements.phoneStatus) {
+    if (elements.phoneStatusIndicator) {
         setInterval(async () => {
-            const status = await fetchApi('/get_phone_status');
+            const status = await fetchApi('/api/get_phone_status');
             if (status) {
                 updatePhoneStatus(status);
             }

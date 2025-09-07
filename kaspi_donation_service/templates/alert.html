@@ -96,18 +96,21 @@
             ws.onopen = () => console.log('Alert widget connected.');
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                if (message.type === 'show_alert' && message.data.id !== lastShownAlertId) {
+                console.log('Alert widget received message:', message);
+                if (message.type === 'show_alert') {
+                    console.log('Processing show_alert message:', message.data);
                     alertQueue.push(message.data);
                     processQueue();
                 } else if (message.type === 'tts') {
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
-                    currentSettings = message.data.settings;
+                    currentSettings = message.data.settings || {};
                     const latestDonation = message.data.donations?.[0];
                     if (latestDonation && latestDonation.id !== lastShownAlertId) {
-                        const donationTime = latestDonation.id / 1000;
+                        const donationTime = new Date(latestDonation.timestamp).getTime() / 1000;
                         const now = Date.now() / 1000;
-                        if ((now - donationTime) < 15) {
+                        if ((now - donationTime) < 30) {
+                            console.log('Adding latest donation to queue:', latestDonation);
                             alertQueue.push(latestDonation);
                             processQueue();
                         }
@@ -121,7 +124,9 @@
             if (isShowingAlert || alertQueue.length === 0) return;
             isShowingAlert = true;
             const data = alertQueue.shift();
+            console.log('Processing alert from queue:', data);
             if (data.id === lastShownAlertId) {
+                console.log('Skipping duplicate alert:', data.id);
                 isShowingAlert = false;
                 processQueue();
                 return;
@@ -131,6 +136,7 @@
         }
 
         function showAlert(data) {
+            console.log('Showing alert for:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             alertContainer.innerHTML = `
