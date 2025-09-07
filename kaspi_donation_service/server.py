@@ -400,12 +400,13 @@ def ws(ws):
         print(f"🔌 WebSocket client disconnected for user {user_id}.")
 
 # --- Запуск ---
+# Этот блок выполняется только при локальном запуске файла (python server.py)
+# Gunicorn и Render не используют этот код.
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    if os.getenv('RENDER') != 'true':
-        webbrowser.open('http://127.0.0.1:5000/')
-    # Используем app.run() только для локального запуска
-    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.getenv('RENDER') != 'true')
+    # Отключаем debug в проде
+    debug_mode = os.getenv('RENDER') != 'true'
+    # Используем стандартный app.run() для простоты локальной разработки
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
 
