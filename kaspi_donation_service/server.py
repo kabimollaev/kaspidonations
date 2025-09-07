@@ -243,7 +243,7 @@ def download_agent():
     return send_from_directory(DOWNLOADS_DIR, 'KaspiDonationsAgent.exe', as_attachment=True)
 
 # --- API ---
-@app.route('/api/get_all_data')
+@app.route('/api/get_all_data', methods=['GET'])
 @api_login_required
 def get_all_data():
     return jsonify(get_full_update_message(g.user.id)['data'])
@@ -367,7 +367,7 @@ def test_donation_api():
         gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
-@app.route('/api/get_phone_status')
+@app.route('/api/get_phone_status', methods=['GET'])
 @api_login_required
 def get_phone_status():
     user = g.user
