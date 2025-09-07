@@ -1,6 +1,4 @@
 # --- ИСПРАВЛЕНИЕ ДЛЯ СОВМЕСТИМОСТИ С GEVENT ---
-# Эти строки должны быть самыми первыми, чтобы "научить" стандартные библиотеки 
-# (например, те, что использует gTTS) работать с асинхронным сервером.
 from gevent import monkey
 monkey.patch_all()
 
@@ -15,11 +13,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sock import Sock
 from gtts import gTTS
-from datetime import datetime
+from datetime import datetime, timedelta
 import gevent
+from functools import wraps
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
+DOWNLOADS_DIR = os.path.join(basedir, 'static', 'downloads')
 
 # --- Конфигурация приложения ---
 app = Flask(__name__)
@@ -32,13 +32,14 @@ os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
 TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
 os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 sock = Sock(app)
 
-# Хранилище для WebSocket клиентов
+# Хранилище для WebSocket клиентов и статуса Phone Link
 clients = {}
 PHONE_STATUS = {}
 
@@ -50,7 +51,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    donations = db.relationship('Donation', backref='user', lazy=True, cascade="all, delete-orphan")
+    donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
 
@@ -85,21 +86,21 @@ def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
 # --- Фоновые задачи ---
-def cleanup_tts_cache():
-    """Фоновая задача для очистки старых TTS файлов."""
+def cleanup_tts_files():
+    """Периодически удаляет старые TTS файлы."""
     while True:
         try:
-            now = time.time()
+            now = datetime.now()
             for filename in os.listdir(TTS_CACHE_DIR):
                 file_path = os.path.join(TTS_CACHE_DIR, filename)
-                # Удаляем файлы старше 10 минут (600 секунд)
-                if os.path.isfile(file_path) and (now - os.path.getmtime(file_path)) > 600:
-                    os.remove(file_path)
-                    print(f"🗑️ Удален старый TTS файл: {filename}")
+                if os.path.isfile(file_path):
+                    file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if now - file_mod_time > timedelta(minutes=10):
+                        os.remove(file_path)
+                        print(f"🗑️  Удален старый TTS файл: {filename}")
         except Exception as e:
-            print(f"🧹 Ошибка при очистке кэша TTS: {e}")
-        # Пауза на 15 минут (900 секунд) перед следующей проверкой
-        gevent.sleep(900)
+            print(f"❌ Ошибка при очистке TTS кэша: {e}")
+        gevent.sleep(60 * 15) # Пауза 15 минут
 
 # --- Функции для Real-time обновлений ---
 def broadcast_to_user(user_id, message_data):
@@ -112,8 +113,8 @@ def broadcast_to_user(user_id, message_data):
                 print(f"❌ Не удалось отправить WebSocket сообщение клиенту пользователя {user_id}: {e}")
                 clients[user_id].remove(ws)
 
-def _create_tts_file(text, user_id):
-    """Внутренняя функция для создания TTS, запускается в отдельном потоке gevent."""
+def tts_task(text, user_id):
+    """Задача для генерации TTS в отдельном потоке gevent."""
     with app.app_context():
         try:
             tts = gTTS(text, lang='ru')
@@ -121,21 +122,17 @@ def _create_tts_file(text, user_id):
             full_path = os.path.join(TTS_CACHE_DIR, filename_part)
             tts.save(full_path)
             print(f"✅ TTS создан: {full_path}")
-            tts_url = f"/tts_cache/{filename_part}"
+            tts_url = url_for('serve_tts_cache', filename=filename_part)
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
             print(f"❌ Ошибка создания TTS: {e}")
-
-def trigger_tts(text, user_id):
-    """Запускает создание TTS в безопасном для gevent фоновом потоке."""
-    gevent.spawn(_create_tts_file, text, user_id)
 
 def get_full_update_message(user_id):
     with app.app_context():
         user = db.session.get(User, user_id)
         if not user: return {}
         
-        donations = Donation.query.filter_by(user_id=user.id).order_by(Donation.timestamp.desc()).all()
+        donations = user.donations.order_by(Donation.timestamp.desc()).all()
         goal = user.goal
         settings = user.settings
 
@@ -146,10 +143,31 @@ def get_full_update_message(user_id):
 
         return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
 
+# --- Декоратор для API аутентификации ---
+def api_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if current_user.is_authenticated:
+            g.user = current_user
+            return f(*args, **kwargs)
+
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if not api_key:
+            return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
+        
+        user = User.query.filter_by(api_key=api_key).first()
+        if not user or user.status != 'active':
+            return jsonify({'error': 'Неверный API-ключ или пользователь неактивен.'}), 403
+        
+        g.user = user
+        return f(*args, **kwargs)
+    return decorated_function
+
 # --- Маршруты ---
 @app.route('/')
 def index():
-    return redirect(url_for('login'))
+    # ИЗМЕНЕНИЕ: Теперь главная страница - это лендинг
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -218,29 +236,20 @@ def update_user(user_id):
     flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
 
+# ИЗМЕНЕНИЕ: Маршрут для скачивания агента
+@app.route('/download/agent')
+@login_required
+def download_agent():
+    return send_from_directory(DOWNLOADS_DIR, 'KaspiDonationsAgent.exe', as_attachment=True)
+
 # --- API ---
-@app.before_request
-def before_request_api():
-    if request.path.startswith('/api/'):
-        if current_user.is_authenticated:
-            g.user = current_user
-            return
-
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
-        if not api_key:
-            return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
-        
-        user = User.query.filter_by(api_key=api_key).first()
-        if not user or user.status != 'active':
-            return jsonify({'error': 'Неверный API-ключ или пользователь неактивен.'}), 403
-        
-        g.user = user
-
 @app.route('/api/get_all_data')
+@api_login_required
 def get_all_data():
     return jsonify(get_full_update_message(g.user.id)['data'])
 
 @app.route('/api/submit_donation', methods=['POST'])
+@api_login_required
 def submit_donation():
     user = g.user
     data = request.get_json()
@@ -257,12 +266,13 @@ def submit_donation():
     
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        trigger_tts(tts_message, user.id)
+        gevent.spawn(tts_task, tts_message, user.id)
 
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success', 'message': 'Донат успешно добавлен.'})
 
 @app.route('/api/update_goal', methods=['POST'])
+@api_login_required
 def update_goal():
     user = g.user
     data = request.json
@@ -273,6 +283,7 @@ def update_goal():
     return jsonify({'status': 'success'})
 
 @app.route('/api/update_settings', methods=['POST'])
+@api_login_required
 def update_settings():
     user = g.user
     data = request.json
@@ -284,6 +295,7 @@ def update_settings():
     return jsonify({'status': 'success'})
 
 @app.route('/api/add_manual_donation', methods=['POST'])
+@api_login_required
 def add_manual_donation():
     user = g.user
     data = request.json
@@ -291,26 +303,29 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-
+    
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        trigger_tts(tts_message, user.id)
-
+        gevent.spawn(tts_task, tts_message, user.id)
+        
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/reset_donations', methods=['POST'])
+@api_login_required
 def reset_donations():
     user = g.user
-    Donation.query.filter_by(user_id=user.id).delete()
+    user.donations.delete()
     user.goal.current_amount = 0
     db.session.commit()
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
 def delete_donation(donation_id):
     user = g.user
     donation = db.session.get(Donation, donation_id)
@@ -323,6 +338,7 @@ def delete_donation(donation_id):
     return jsonify({'status': 'success'})
 
 @app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
 def replay_donation(donation_id):
     user = g.user
     donation = db.session.get(Donation, donation_id)
@@ -332,14 +348,15 @@ def replay_donation(donation_id):
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        trigger_tts(tts_message, user.id)
+        gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
+@api_login_required
 def test_donation_api():
     user = g.user
     test_donation_data = {
-        'id': int(time.time()),
+        'id': f"test_{int(time.time())}",
         'name': 'Тестер',
         'amount': 100,
         'message': 'Это тестовый донат для проверки оповещений!'
@@ -347,15 +364,17 @@ def test_donation_api():
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     if user.settings.tts_enabled:
         tts_message = f"Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
-        trigger_tts(tts_message, user.id)
+        gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status')
+@api_login_required
 def get_phone_status():
     user = g.user
     return jsonify(PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"}))
 
 @app.route('/api/update_phone_status', methods=['POST'])
+@api_login_required
 def update_phone_status():
     user = g.user
     PHONE_STATUS[user.id] = request.json
@@ -416,7 +435,7 @@ def ws(ws):
             try:
                 ws.send(json.dumps({"type": "heartbeat"}))
             except Exception:
-                break
+                break 
                 
     except Exception as e:
         print(f"WebSocket error for user {user_id}: {e}")
@@ -431,11 +450,9 @@ def ws(ws):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    # Запускаем фоновую задачу очистки только при локальном запуске
-    gevent.spawn(cleanup_tts_cache)
+    
+    gevent.spawn(cleanup_tts_files)
+    
     debug_mode = os.getenv('RENDER') != 'true'
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
-else:
-    # Запускаем фоновую задачу очистки, когда приложение запускается через Gunicorn
-    gevent.spawn(cleanup_tts_cache)
 
