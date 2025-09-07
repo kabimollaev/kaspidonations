@@ -1,3 +1,9 @@
+# --- ИСПРАВЛЕНИЕ ДЛЯ СОВМЕСТИМОСТИ С GEVENT ---
+# Эти строки должны быть самыми первыми, чтобы "научить" стандартные библиотеки 
+# (например, те, что использует gTTS) работать с асинхронным сервером.
+from gevent import monkey
+monkey.patch_all()
+
 import time
 import uuid
 import os
@@ -101,13 +107,11 @@ def _create_tts_file(text, user_id):
             tts_url = url_for('serve_tts_cache', filename=filename_part)
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
-            # Убрана рекурсия, просто логируем ошибку
             print(f"❌ Ошибка создания TTS: {e}")
 
 def trigger_tts(text, user_id):
     """Запускает создание TTS в безопасном для gevent фоновом потоке."""
     gevent.spawn(_create_tts_file, text, user_id)
-
 
 def get_full_update_message(user_id):
     with app.app_context():
@@ -271,7 +275,6 @@ def add_manual_donation():
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
 
-    # ИСПРАВЛЕНИЕ: Принудительно отправляем show_alert для ручного доната
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
@@ -280,7 +283,6 @@ def add_manual_donation():
 
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
-
 
 @app.route('/api/reset_donations', methods=['POST'])
 def reset_donations():
