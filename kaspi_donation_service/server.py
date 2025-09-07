@@ -72,7 +72,10 @@ class Settings(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    # This function should not have a legacy warning.
+    # Using Session.get() is the modern approach.
+    return db.session.get(User, int(user_id))
+
 
 @app.context_processor
 def inject_cache_buster():
@@ -104,10 +107,9 @@ def trigger_tts(text, user_id):
 
 def get_full_update_message(user_id):
     with app.app_context():
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user: return {}
         
-        # ИСПРАВЛЕНИЕ: Правильный запрос к базе данных для сортировки донатов
         donations = Donation.query.filter_by(user_id=user.id).order_by(Donation.timestamp.desc()).all()
         goal = user.goal
         settings = user.settings
@@ -181,7 +183,10 @@ def admin_panel():
 @login_required
 def update_user(user_id):
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
-    user = User.query.get_or_404(user_id)
+    user = db.session.get(User, user_id)
+    if not user:
+        flash(f'Пользователь с ID {user_id} не найден.', 'error')
+        return redirect(url_for('admin_panel'))
     user.role = request.form.get('role')
     user.status = request.form.get('status')
     db.session.commit()
@@ -192,6 +197,12 @@ def update_user(user_id):
 @app.before_request
 def before_request_api():
     if request.path.startswith('/api/'):
+        # ИСПРАВЛЕНИЕ: Сначала проверяем аутентификацию по сессии.
+        # Если пользователь уже залогинен, ничего не делаем.
+        if current_user.is_authenticated:
+            return
+
+        # Если сессии нет, тогда проверяем API ключ (для agent.py)
         api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
         if not api_key:
             return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
@@ -203,10 +214,9 @@ def before_request_api():
         g.user = user
 
 @app.route('/api/get_all_data')
+@login_required
 def get_all_data():
-    user = current_user if current_user.is_authenticated else g.get('user')
-    if not user: return jsonify({"error": "Unauthorized"}), 401
-    return jsonify(get_full_update_message(user.id)['data'])
+    return jsonify(get_full_update_message(current_user.id)['data'])
 
 @app.route('/api/submit_donation', methods=['POST'])
 def submit_donation():
@@ -274,8 +284,9 @@ def reset_donations():
 @app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
 @login_required
 def delete_donation(donation_id):
-    donation = Donation.query.get_or_404(donation_id)
-    if donation.user_id != current_user.id: return jsonify({'error': 'Unauthorized'}), 403
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != current_user.id:
+        return jsonify({'error': 'Donation not found or unauthorized'}), 404
     current_user.goal.current_amount -= donation.amount
     db.session.delete(donation)
     db.session.commit()
@@ -285,8 +296,9 @@ def delete_donation(donation_id):
 @app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
 @login_required
 def replay_donation(donation_id):
-    donation = Donation.query.get_or_404(donation_id)
-    if donation.user_id != current_user.id: return jsonify({'error': 'Unauthorized'}), 403
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != current_user.id:
+        return jsonify({'error': 'Donation not found or unauthorized'}), 404
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(current_user.id, {"type": "show_alert", "data": donation_data})
     if current_user.settings.tts_enabled:
@@ -353,10 +365,14 @@ def serve_media_files(filename):
 # --- WebSocket ---
 @sock.route('/ws')
 def ws(ws):
+    # ИСПРАВЛЕНИЕ: Определяем user_id по сессии, если он не передан в URL
     user_id = request.args.get('user_id', type=int)
     if not user_id:
-        ws.close(reason=1008, message="User ID is required")
-        return
+        if current_user.is_authenticated:
+            user_id = current_user.id
+        else:
+            ws.close(reason=1008, message="User ID is required")
+            return
 
     if user_id not in clients:
         clients[user_id] = set()
