@@ -33,8 +33,8 @@ login_manager.login_view = 'login'
 sock = Sock(app)
 
 # Хранилище для WebSocket клиентов
-# Ключ - user_id, значение - set с объектами ws
 clients = {}
+PHONE_STATUS = {}
 
 # --- Модели Базы Данных ---
 class User(UserMixin, db.Model):
@@ -82,28 +82,22 @@ def inject_cache_buster():
 def broadcast_to_user(user_id, message_data):
     if user_id in clients:
         message_str = json.dumps(message_data, ensure_ascii=False)
-        # Создаем копию сета, чтобы избежать ошибок при изменении сета во время итерации
         for ws in list(clients[user_id]):
             try:
                 ws.send(message_str)
             except Exception as e:
                 print(f"❌ Не удалось отправить WebSocket сообщение клиенту пользователя {user_id}: {e}")
-                # Удаляем "мертвое" соединение
                 clients[user_id].remove(ws)
 
 def trigger_tts(text, user_id):
     with app.app_context():
         try:
             tts = gTTS(text, lang='ru')
-            # Используем uuid для уникальности имени файла
             filename_part = f'tts_{uuid.uuid4()}.mp3'
             full_path = os.path.join(TTS_CACHE_DIR, filename_part)
             tts.save(full_path)
             print(f"✅ TTS создан: {full_path}")
-            
-            # Собираем URL для клиента
             tts_url = url_for('serve_tts_cache', filename=filename_part, _external=True)
-            
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
             print(f"❌ Ошибка создания TTS: {e}")
@@ -113,15 +107,17 @@ def get_full_update_message(user_id):
         user = User.query.get(user_id)
         if not user: return {}
         
-        donations = user.donations.order_by(Donation.timestamp.desc()).all()
+        # ИСПРАВЛЕНИЕ: Правильный запрос к базе данных для сортировки донатов
+        donations = Donation.query.filter_by(user_id=user.id).order_by(Donation.timestamp.desc()).all()
         goal = user.goal
         settings = user.settings
 
         donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
         goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
         settings_data = {'min_amount': settings.min_amount, 'tts_enabled': settings.tts_enabled, 'tts_volume': settings.tts_volume} if settings else {}
-        
-        return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data}}
+        phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
+
+        return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
 
 # --- Маршруты ---
 @app.route('/')
@@ -193,9 +189,139 @@ def update_user(user_id):
     return redirect(url_for('admin_panel'))
 
 # --- API ---
-# ... (API routes are correct and don't need changes)
+@app.before_request
+def before_request_api():
+    if request.path.startswith('/api/'):
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if not api_key:
+            return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
+        
+        user = User.query.filter_by(api_key=api_key).first()
+        if not user or user.status != 'active':
+            return jsonify({'error': 'Неверный API-ключ или пользователь неактивен.'}), 403
+        
+        g.user = user
 
-# --- ВИДЖЕТЫ (ИСПРАВЛЕНО) ---
+@app.route('/api/get_all_data')
+def get_all_data():
+    user = current_user if current_user.is_authenticated else g.get('user')
+    if not user: return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(get_full_update_message(user.id)['data'])
+
+@app.route('/api/submit_donation', methods=['POST'])
+def submit_donation():
+    user = g.user
+    data = request.get_json()
+    if not data or 'name' not in data or 'amount' not in data:
+        return jsonify({'error': 'Отсутствуют обязательные поля.'}), 400
+
+    new_donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=user.id)
+    db.session.add(new_donation)
+    user.goal.current_amount += float(data['amount'])
+    db.session.commit()
+    
+    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    
+    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+        threading.Thread(target=trigger_tts, args=(tts_message, user.id)).start()
+
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success', 'message': 'Донат успешно добавлен.'})
+
+@app.route('/api/update_goal', methods=['POST'])
+@login_required
+def update_goal():
+    data = request.json
+    current_user.goal.title = data.get('title')
+    current_user.goal.target_amount = float(data.get('target', 0))
+    db.session.commit()
+    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/update_settings', methods=['POST'])
+@login_required
+def update_settings():
+    data = request.json
+    current_user.settings.min_amount = float(data.get('min_amount', 0))
+    current_user.settings.tts_enabled = bool(data.get('tts_enabled'))
+    current_user.settings.tts_volume = float(data.get('tts_volume', 0.7))
+    db.session.commit()
+    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/add_manual_donation', methods=['POST'])
+@login_required
+def add_manual_donation():
+    data = request.json
+    donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=current_user.id)
+    db.session.add(donation)
+    current_user.goal.current_amount += float(data['amount'])
+    db.session.commit()
+    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/reset_donations', methods=['POST'])
+@login_required
+def reset_donations():
+    Donation.query.filter_by(user_id=current_user.id).delete()
+    current_user.goal.current_amount = 0
+    db.session.commit()
+    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
+@login_required
+def delete_donation(donation_id):
+    donation = Donation.query.get_or_404(donation_id)
+    if donation.user_id != current_user.id: return jsonify({'error': 'Unauthorized'}), 403
+    current_user.goal.current_amount -= donation.amount
+    db.session.delete(donation)
+    db.session.commit()
+    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
+@login_required
+def replay_donation(donation_id):
+    donation = Donation.query.get_or_404(donation_id)
+    if donation.user_id != current_user.id: return jsonify({'error': 'Unauthorized'}), 403
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(current_user.id, {"type": "show_alert", "data": donation_data})
+    if current_user.settings.tts_enabled:
+        tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
+        threading.Thread(target=trigger_tts, args=(tts_message, current_user.id)).start()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/test_donation', methods=['POST'])
+@login_required
+def test_donation_api():
+    test_donation_data = {
+        'id': int(time.time()),
+        'name': 'Тестер',
+        'amount': 100,
+        'message': 'Это тестовый донат для проверки оповещений!'
+    }
+    broadcast_to_user(current_user.id, {"type": "show_alert", "data": test_donation_data})
+    if current_user.settings.tts_enabled:
+        tts_message = f"Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
+        threading.Thread(target=trigger_tts, args=(tts_message, current_user.id)).start()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/get_phone_status')
+@login_required
+def get_phone_status():
+    return jsonify(PHONE_STATUS.get(current_user.id, {"connected": False, "message": "Нет данных"}))
+
+@app.route('/api/update_phone_status', methods=['POST'])
+def update_phone_status():
+    user = g.user
+    PHONE_STATUS[user.id] = request.json
+    broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
+    return jsonify({'status': 'success'})
+
+# --- ВИДЖЕТЫ ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
     return render_template('alert.html', user_id=user_id)
@@ -216,8 +342,15 @@ def latest_donations_widget(user_id):
 def latest_donations_popout(user_id):
     return render_template('latest_donations_popout.html', user_id=user_id)
 
+@app.route('/tts_cache/<path:filename>')
+def serve_tts_cache(filename):
+    return send_from_directory(TTS_CACHE_DIR, filename)
 
-# --- WebSocket Route ---
+@app.route('/static/media/<path:filename>')
+def serve_media_files(filename):
+    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
+
+# --- WebSocket ---
 @sock.route('/ws')
 def ws(ws):
     user_id = request.args.get('user_id', type=int)
@@ -225,34 +358,27 @@ def ws(ws):
         ws.close(reason=1008, message="User ID is required")
         return
 
-    # Регистрация клиента
     if user_id not in clients:
         clients[user_id] = set()
     clients[user_id].add(ws)
-    print(f"🔗 WebSocket client connected for user {user_id}. Total clients for user: {len(clients[user_id])}")
+    print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
 
     try:
-        # Отправляем начальное состояние
         initial_data = get_full_update_message(user_id)
         ws.send(json.dumps(initial_data, ensure_ascii=False))
 
-        # Держим соединение открытым
         while not ws.closed:
-            # Просто ждем, можно добавить обработку входящих сообщений при необходимости
-            message = ws.receive(timeout=30) # timeout to prevent indefinite blocking
-            if message is None: # timeout occurred
+            message = ws.receive(timeout=30)
+            if message is None:
                 ws.send(json.dumps({"type": "heartbeat"}))
-    
     except Exception as e:
         print(f"WebSocket error for user {user_id}: {e}")
     finally:
-        # Удаление клиента при отключении
         if user_id in clients and ws in clients[user_id]:
             clients[user_id].remove(ws)
             if not clients[user_id]:
                 del clients[user_id]
         print(f"🔌 WebSocket client disconnected for user {user_id}.")
-
 
 # --- Запуск ---
 if __name__ == '__main__':
