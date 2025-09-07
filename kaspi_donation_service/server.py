@@ -166,7 +166,6 @@ def api_login_required(f):
 # --- Маршруты ---
 @app.route('/')
 def index():
-    # ИЗМЕНЕНИЕ: Теперь главная страница - это лендинг
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -236,7 +235,7 @@ def update_user(user_id):
     flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
 
-# ИЗМЕНЕНИЕ: Маршрут для скачивания агента
+# ИСПРАВЛЕНИЕ: Маршрут для скачивания агента
 @app.route('/download/agent')
 @login_required
 def download_agent():
