@@ -84,6 +84,23 @@ def load_user(user_id):
 def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
+# --- Фоновые задачи ---
+def cleanup_tts_cache():
+    """Фоновая задача для очистки старых TTS файлов."""
+    while True:
+        try:
+            now = time.time()
+            for filename in os.listdir(TTS_CACHE_DIR):
+                file_path = os.path.join(TTS_CACHE_DIR, filename)
+                # Удаляем файлы старше 10 минут (600 секунд)
+                if os.path.isfile(file_path) and (now - os.path.getmtime(file_path)) > 600:
+                    os.remove(file_path)
+                    print(f"🗑️ Удален старый TTS файл: {filename}")
+        except Exception as e:
+            print(f"🧹 Ошибка при очистке кэша TTS: {e}")
+        # Пауза на 15 минут (900 секунд) перед следующей проверкой
+        gevent.sleep(900)
+
 # --- Функции для Real-time обновлений ---
 def broadcast_to_user(user_id, message_data):
     if user_id in clients:
@@ -104,7 +121,6 @@ def _create_tts_file(text, user_id):
             full_path = os.path.join(TTS_CACHE_DIR, filename_part)
             tts.save(full_path)
             print(f"✅ TTS создан: {full_path}")
-            # ИСПРАВЛЕНИЕ: Собираем URL вручную, чтобы избежать проблем с контекстом запроса
             tts_url = f"/tts_cache/{filename_part}"
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
@@ -415,6 +431,11 @@ def ws(ws):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+    # Запускаем фоновую задачу очистки только при локальном запуске
+    gevent.spawn(cleanup_tts_cache)
     debug_mode = os.getenv('RENDER') != 'true'
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
+else:
+    # Запускаем фоновую задачу очистки, когда приложение запускается через Gunicorn
+    gevent.spawn(cleanup_tts_cache)
 
