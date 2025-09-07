@@ -92,8 +92,9 @@
 
         function connectWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
-            ws.onopen = () => console.log('Alert widget connected.');
+            const userId = window.location.pathname.split('/')[2] || '1';
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
+            ws.onopen = () => console.log('Alert widget connected with user_id:', userId);
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 console.log('Alert widget received message:', message);
@@ -101,6 +102,9 @@
                     console.log('Processing show_alert message:', message.data);
                     alertQueue.push(message.data);
                     processQueue();
+                } else if (message.type === 'ping') {
+                    // Ignore ping messages
+                    console.log('Received ping from server');
                 } else if (message.type === 'tts') {
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
@@ -117,7 +121,13 @@
                     }
                 }
             };
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+            ws.onclose = () => {
+                console.log('Alert widget WebSocket closed, reconnecting...');
+                setTimeout(connectWebSocket, 3000);
+            };
+            ws.onerror = (error) => {
+                console.error('Alert widget WebSocket error:', error);
+            };
         }
 
         function processQueue() {

@@ -90,12 +90,15 @@ def inject_cache_buster():
 def broadcast(data, user_id):
     """Отправляет данные всем клиентам WebSocket данного пользователя."""
     message = json.dumps(data, ensure_ascii=False)
+    sent_count = 0
     for ws in app.clients:
         if hasattr(ws, 'user_id') and ws.user_id == user_id:
             try:
                 ws.send(message)
+                sent_count += 1
             except Exception as e:
                 print(f"❌ Не удалось отправить WebSocket сообщение: {e}")
+    print(f"📡 Broadcast sent to {sent_count} clients for user {user_id}: {data.get('type', 'unknown')}")
 
 def trigger_tts(text, user_id):
     """Создает TTS файл и отправляет его через WebSocket."""
