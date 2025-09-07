@@ -11,6 +11,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask_sock import Sock
 from gtts import gTTS
 from datetime import datetime
+# ИСПРАВЛЕНИЕ: Импортируем gevent.sleep для неблокирующей паузы
+from gevent import sleep
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -196,6 +198,8 @@ def update_user(user_id):
 def before_request_api():
     if request.path.startswith('/api/'):
         if current_user.is_authenticated:
+            # Для API-запросов из браузера используем current_user
+            g.user = current_user
             return
 
         api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
@@ -209,9 +213,8 @@ def before_request_api():
         g.user = user
 
 @app.route('/api/get_all_data')
-@login_required
 def get_all_data():
-    return jsonify(get_full_update_message(current_user.id)['data'])
+    return jsonify(get_full_update_message(g.user.id)['data'])
 
 @app.route('/api/submit_donation', methods=['POST'])
 def submit_donation():
@@ -236,90 +239,90 @@ def submit_donation():
     return jsonify({'status': 'success', 'message': 'Донат успешно добавлен.'})
 
 @app.route('/api/update_goal', methods=['POST'])
-@login_required
 def update_goal():
+    user = g.user
     data = request.json
-    current_user.goal.title = data.get('title')
-    current_user.goal.target_amount = float(data.get('target', 0))
+    user.goal.title = data.get('title')
+    user.goal.target_amount = float(data.get('target', 0))
     db.session.commit()
-    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/update_settings', methods=['POST'])
-@login_required
 def update_settings():
+    user = g.user
     data = request.json
-    current_user.settings.min_amount = float(data.get('min_amount', 0))
-    current_user.settings.tts_enabled = bool(data.get('tts_enabled'))
-    current_user.settings.tts_volume = float(data.get('tts_volume', 0.7))
+    user.settings.min_amount = float(data.get('min_amount', 0))
+    user.settings.tts_enabled = bool(data.get('tts_enabled'))
+    user.settings.tts_volume = float(data.get('tts_volume', 0.7))
     db.session.commit()
-    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/add_manual_donation', methods=['POST'])
-@login_required
 def add_manual_donation():
+    user = g.user
     data = request.json
-    donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=current_user.id)
+    donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=user.id)
     db.session.add(donation)
-    current_user.goal.current_amount += float(data['amount'])
+    user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/reset_donations', methods=['POST'])
-@login_required
 def reset_donations():
-    Donation.query.filter_by(user_id=current_user.id).delete()
-    current_user.goal.current_amount = 0
+    user = g.user
+    Donation.query.filter_by(user_id=user.id).delete()
+    user.goal.current_amount = 0
     db.session.commit()
-    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
-@login_required
 def delete_donation(donation_id):
+    user = g.user
     donation = db.session.get(Donation, donation_id)
-    if not donation or donation.user_id != current_user.id:
+    if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Donation not found or unauthorized'}), 404
-    current_user.goal.current_amount -= donation.amount
+    user.goal.current_amount -= donation.amount
     db.session.delete(donation)
     db.session.commit()
-    broadcast_to_user(current_user.id, get_full_update_message(current_user.id))
+    broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
-@login_required
 def replay_donation(donation_id):
+    user = g.user
     donation = db.session.get(Donation, donation_id)
-    if not donation or donation.user_id != current_user.id:
+    if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Donation not found or unauthorized'}), 404
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
-    broadcast_to_user(current_user.id, {"type": "show_alert", "data": donation_data})
-    if current_user.settings.tts_enabled:
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        threading.Thread(target=trigger_tts, args=(tts_message, current_user.id)).start()
+        threading.Thread(target=trigger_tts, args=(tts_message, user.id)).start()
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
-@login_required
 def test_donation_api():
+    user = g.user
     test_donation_data = {
         'id': int(time.time()),
         'name': 'Тестер',
         'amount': 100,
         'message': 'Это тестовый донат для проверки оповещений!'
     }
-    broadcast_to_user(current_user.id, {"type": "show_alert", "data": test_donation_data})
-    if current_user.settings.tts_enabled:
+    broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
+    if user.settings.tts_enabled:
         tts_message = f"Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
-        threading.Thread(target=trigger_tts, args=(tts_message, current_user.id)).start()
+        threading.Thread(target=trigger_tts, args=(tts_message, user.id)).start()
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status')
-@login_required
 def get_phone_status():
-    return jsonify(PHONE_STATUS.get(current_user.id, {"connected": False, "message": "Нет данных"}))
+    user = g.user
+    return jsonify(PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"}))
 
 @app.route('/api/update_phone_status', methods=['POST'])
 def update_phone_status():
@@ -377,11 +380,14 @@ def ws(ws):
         initial_data = get_full_update_message(user_id)
         ws.send(json.dumps(initial_data, ensure_ascii=False))
 
-        # ИСПРАВЛЕНИЕ: Правильный цикл для flask-sock
+        # ИСПРАВЛЕНИЕ: Неблокирующий цикл для gevent
         while True:
-            message = ws.receive(timeout=30)
-            if message is None:
+            sleep(25) # Пауза, не блокирующая Gunicorn
+            try:
                 ws.send(json.dumps({"type": "heartbeat"}))
+            except Exception:
+                break # Клиент отключился
+                
     except Exception as e:
         print(f"WebSocket error for user {user_id}: {e}")
     finally:
@@ -397,5 +403,7 @@ if __name__ == '__main__':
         db.create_all()
     if os.getenv('RENDER') != 'true':
         webbrowser.open('http://127.0.0.1:5000/')
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.getenv('RENDER') != 'true')
+    # Используем app.run() только для локального запуска
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.getenv('RENDER') != 'true')
 
