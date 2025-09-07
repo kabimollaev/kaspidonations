@@ -601,7 +601,10 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     
-    # Автооткрытие браузера через 1 секунду
-    threading.Timer(1, lambda: webbrowser.open('http://127.0.0.1:5000/')).start()
+    # Автооткрытие браузера только в локальной разработке
+    if os.getenv('RENDER') != 'true':
+        threading.Timer(1, lambda: webbrowser.open('http://127.0.0.1:5000/')).start()
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.getenv('RENDER') != 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
