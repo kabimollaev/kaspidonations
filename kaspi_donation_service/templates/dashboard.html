@@ -5,32 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Панель управления донатами</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script> 
 </head>
 <body>
     <div class="dashboard-container">
         <header class="dashboard-header">
-            <h1>Панель управления донатами</h1>
+            <h1>Панель управления</h1>
             <div class="user-info">
                 <span>Пользователь: <strong>{{ user.username }}</strong></span>
                 {% if user.role == 'admin' %}
-                <a href="{{ url_for('admin_panel') }}" class="admin-link">Панель администратора</a>
+                <a href="{{ url_for('admin_panel') }}" class="admin-link">Админ панель</a>
                 {% endif %}
                 <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
             </div>
         </header>
 
         <div class="api-key-section">
-            <h3>Ваш персональный API ключ (для "Агента")</h3>
+            <h3>Ваш персональный API ключ</h3>
             <input type="text" value="{{ user.api_key }}" readonly>
-            <p>Этот ключ понадобится для настройки локального "Агента", который будет отслеживать уведомления на вашем ПК.</p>
+            <p>Этот ключ понадобится для настройки приложения на вашем ПК.</p>
         </div>
 
-        <!-- ИЗМЕНЕНИЕ: Добавлен блок для скачивания -->
+        <!-- ИЗМЕНЕНИЕ: Новый блок для скачивания -->
         <div class="download-agent-section">
-            <h3>Скачать приложение для ПК</h3>
+            <h3>Приложение для ПК</h3>
             <p>Это приложение необходимо для отслеживания уведомлений с вашего телефона и их мгновенной отправки на стрим.</p>
-            <a href="{{ url_for('download_agent') }}" class="btn btn-primary">Скачать приложение</a>
+            <!-- ИЗМЕНЕНИЕ: Ссылка на Google Drive -->
+            <a href="https://drive.google.com/file/d/141_12MNTbJGaUjt11qBWpONaavpblVgW/view?usp=sharing" class="btn btn-primary" target="_blank">Скачать приложение</a>
         </div>
         
         <main class="main-grid">
@@ -57,7 +57,7 @@
                     </div>
                 </div>
                  <div class="card">
-                    <h3 class="card-title">Статус Phone Link</h3>
+                    <h3 class="card-title">Статус подключения</h3>
                     <div id="phone-status-indicator" class="status-indicator">
                         <span class="status-dot"></span>
                         <span class="status-text">Загрузка...</span>
@@ -137,7 +137,7 @@
                     <div class="card-header">
                         <h3 class="card-title">История донатов</h3>
                         <button onclick="window.open('/latest_donations_popout/{{ current_user.id }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
-                            📋 Открыть в новом окне
+                            Открыть в новом окне
                         </button>
                     </div>
                     <div id="donations-list">
@@ -148,7 +148,6 @@
                 <div class="card">
                     <h3 class="card-title">Консоль событий</h3>
                     <div id="console-output" class="console-output">
-                        <!-- Логи будут добавляться сюда -->
                     </div>
                 </div>
             </aside>
