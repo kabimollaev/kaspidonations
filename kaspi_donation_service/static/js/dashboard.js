@@ -322,3 +322,4 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 10000); // Увеличен интервал до 10 секунд
     }
 });
+
