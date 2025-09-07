@@ -22,11 +22,12 @@
     </div>
     <script>
         function connectWebSocket() {
+            const userId = window.location.pathname.split('/')[2] || '1';
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${userId}`);
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                if (message.type === 'full_update') {
+                if (message.type === 'full_update' && message.data.goal) {
                     updateGoal(message.data.goal);
                 }
             };
