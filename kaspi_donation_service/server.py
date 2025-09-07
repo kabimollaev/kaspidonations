@@ -2,11 +2,14 @@ import time
 import uuid
 import os
 import json
-from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify
+import webbrowser
+import threading
+from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sock import Sock
+from gtts import gTTS
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -18,6 +21,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'inst
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
+os.makedirs(os.path.join(basedir, 'tts_cache'), exist_ok=True)
+os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -25,6 +30,16 @@ login_manager.login_view = 'login'
 
 sock = Sock(app)
 app.clients = set()
+
+# Глобальные переменные для статуса Phone Link
+PHONE_STATUS = {
+    "connected": False,
+    "message": "Поиск Phone Link...",
+    "last_check": None
+}
+
+# Путь к кешу TTS
+TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
 
 # --- Модели Базы Данных ---
 
@@ -82,6 +97,23 @@ def broadcast(data, user_id):
             except Exception as e:
                 print(f"❌ Не удалось отправить WebSocket сообщение: {e}")
 
+def trigger_tts(text, user_id):
+    """Создает TTS файл и отправляет его через WebSocket."""
+    try:
+        if not os.path.exists(TTS_CACHE_DIR):
+            os.makedirs(TTS_CACHE_DIR)
+        
+        tts = gTTS(text, lang='ru')
+        filename = os.path.join(TTS_CACHE_DIR, f'tts_{int(time.time())}.mp3')
+        tts.save(filename)
+        
+        # Отправляем URL для воспроизведения
+        broadcast({"type": "tts", "url": f'/tts_cache/{os.path.basename(filename)}'}, user_id)
+        
+        print(f"✅ TTS создан: {filename}")
+    except Exception as e:
+        print(f"❌ Ошибка создания TTS: {e}")
+
 def get_full_update_message(user_id):
     """Формирует полное сообщение-обновление для виджетов."""
     donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).all()
@@ -96,7 +128,7 @@ def get_full_update_message(user_id):
     goal_data = {'title': goal.title, 'current': float(goal.current_amount), 'target': float(goal.target_amount)} if goal else {'title': 'На новую цель', 'current': 0.0, 'target': 10000.0}
     settings_data = {'min_amount': float(settings.min_amount), 'tts_enabled': settings.tts_enabled, 'tts_volume': float(settings.tts_volume)} if settings else {'min_amount': 100.0, 'tts_enabled': True, 'tts_volume': 0.7}
 
-    return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data}}
+    return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": PHONE_STATUS}}
 
 
 # --- Маршруты Аутентификации и Основные страницы ---
@@ -279,7 +311,18 @@ def submit_donation():
     
     settings = Settings.query.filter_by(user_id=user_id).first()
     if settings and settings.tts_enabled and amount >= settings.min_amount:
-        pass
+        tts_message = f"{name} отправил {int(amount)} тенге. Сообщение: {message if message else 'без сообщения'}"
+        trigger_tts(tts_message, user_id)
+    
+    # Показываем алерт если сумма больше минимальной
+    if settings and amount >= settings.min_amount:
+        donation_data = {
+            "id": new_donation.id,
+            "name": name,
+            "amount": amount,
+            "message": message
+        }
+        broadcast({"type": "show_alert", "data": donation_data}, user_id)
     
     return jsonify({"status": "success", "message": "Донат успешно добавлен."}), 200
 
@@ -418,10 +461,95 @@ def replay_donation(donation_id):
     user_id = current_user.id
     donation = Donation.query.filter_by(id=donation_id, user_id=user_id).first()
     if donation:
-        broadcast({'type': 'show_alert', 'data': {'name': donation.name, 'amount': donation.amount, 'message': donation.message}}, user_id)
+        # Показываем алерт
+        donation_data = {
+            "id": donation.id,
+            "name": donation.name,
+            "amount": float(donation.amount),
+            "message": donation.message
+        }
+        broadcast({'type': 'show_alert', 'data': donation_data}, user_id)
+        
+        # Воспроизводим TTS если включен
+        settings = Settings.query.filter_by(user_id=user_id).first()
+        if settings and settings.tts_enabled:
+            tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message if donation.message else 'без сообщения'}"
+            trigger_tts(tts_message, user_id)
+        
         return jsonify({"status": "success", "message": "Оповещение повторно отправлено."})
     return jsonify({"status": "error", "message": "Донат не найден."}), 404
 
+@app.route('/api/test_donation', methods=['POST'])
+@login_required
+def test_donation():
+    user_id = current_user.id
+    
+    # Создаем тестовый донат
+    test_donation_data = Donation(
+        name='Тестер',
+        amount=100.0,
+        message='Это тестовый донат для проверки оповещений!',
+        user_id=user_id
+    )
+    
+    db.session.add(test_donation_data)
+    
+    # Обновляем цель
+    goal = Goal.query.filter_by(user_id=user_id).first()
+    if not goal:
+        goal = Goal(user_id=user_id)
+        db.session.add(goal)
+    goal.current_amount += 100.0
+    
+    db.session.commit()
+    
+    # Отправляем обновления
+    broadcast(get_full_update_message(user_id), user_id)
+    
+    # Показываем алерт
+    donation_data = {
+        "id": test_donation_data.id,
+        "name": 'Тестер',
+        "amount": 100.0,
+        "message": 'Это тестовый донат для проверки оповещений!'
+    }
+    broadcast({'type': 'show_alert', 'data': donation_data}, user_id)
+    
+    # TTS если включен
+    settings = Settings.query.filter_by(user_id=user_id).first()
+    if settings and settings.tts_enabled:
+        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат для проверки оповещений!"
+        trigger_tts(tts_message, user_id)
+    
+    return jsonify({"status": "success", "message": "Тестовый донат добавлен."})
+
+@app.route('/api/get_phone_status', methods=['GET'])
+@login_required
+def get_phone_status():
+    return jsonify(PHONE_STATUS)
+
+@app.route('/api/update_phone_status', methods=['POST'])
+def update_phone_status():
+    if not g.user:
+        return jsonify({"status": "error", "message": "Неверный API-ключ."}), 401
+    
+    data = request.get_json()
+    if data:
+        PHONE_STATUS.update(data)
+        # Отправляем обновление статуса всем пользователям этого агента
+        broadcast({"type": "phone_status_update", "data": PHONE_STATUS}, g.user.id)
+    
+    return jsonify({"status": "success"})
+
+
+# --- Раздача файлов ---
+@app.route('/tts_cache/<path:filename>')
+def serve_tts_cache(filename):
+    return send_from_directory(TTS_CACHE_DIR, filename)
+
+@app.route('/static/media/<path:filename>')
+def serve_media_files(filename):
+    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
 
 # --- Маршруты для виджетов ---
 @app.route('/alert/<int:user_id>')
@@ -465,6 +593,15 @@ def ws_route(ws):
 
 # --- Запуск приложения ---
 if __name__ == '__main__':
+    # Создаем папки если их нет
+    if not os.path.exists(os.path.join(basedir, 'static', 'media')):
+        os.makedirs(os.path.join(basedir, 'static', 'media'))
+        print(f"ℹ️  Создана папка 'static/media' для ваших звуков и GIF.")
+    
     with app.app_context():
         db.create_all()
+    
+    # Автооткрытие браузера через 1 секунду
+    threading.Timer(1, lambda: webbrowser.open('http://127.0.0.1:5000/')).start()
+    
     app.run(host='0.0.0.0', port=5000, debug=True)

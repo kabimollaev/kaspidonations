@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', function() {
         testDonationBtn: document.getElementById('test-donation-btn'),
         donationsList: document.getElementById('donations-list'),
         topDonatorsList: document.getElementById('top-donators-list'),
+        phoneStatusIndicator: document.getElementById('phone-status-indicator'),
+        consoleOutput: document.getElementById('console-output'),
         
         // Поля форм
         goalTitleInput: document.getElementById('goal-title'),
@@ -21,6 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
         ttsVolumeInput: document.getElementById('tts-volume'),
         userIdInput: document.querySelector('input[name="api-key-input"]')
     };
+
+    let lastPhoneStatus = '';
 
     // --- API запросы ---
     async function fetchApi(endpoint, method = 'GET', body = null) {
@@ -47,12 +51,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // --- Обновление статуса Phone Link ---
+    function updatePhoneStatus(status) {
+        if (!elements.phoneStatusIndicator) return;
+        
+        const statusDot = elements.phoneStatusIndicator.querySelector('.status-dot');
+        const statusText = elements.phoneStatusIndicator.querySelector('.status-text');
+        
+        if (status.connected) {
+            statusDot.className = 'status-dot connected';
+            statusText.textContent = status.message;
+            if (lastPhoneStatus !== status.message) {
+                logToConsole(`📱 Phone Link: ${status.message}`, 'info');
+                lastPhoneStatus = status.message;
+            }
+        } else {
+            statusDot.className = 'status-dot disconnected';
+            statusText.textContent = status.message;
+            if (lastPhoneStatus !== status.message) {
+                logToConsole(`📱 Phone Link: ${status.message}`, 'warning');
+                lastPhoneStatus = status.message;
+            }
+        }
+    }
+
     // --- Рендеринг данных ---
     function renderAll() {
         if (!currentData) return;
         renderDonationsList();
         renderTopDonators();
         updateForms();
+        if (currentData.phone_status) {
+            updatePhoneStatus(currentData.phone_status);
+        }
     }
 
     function escapeHtml(unsafe) {
@@ -72,7 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
             listEl.innerHTML = '<p>История донатов пуста.</p>';
             return;
         }
-        listEl.innerHTML = donations.map(d => `
+        listEl.innerHTML = donations.slice(0, 10).map(d => `
             <div class="donation-item">
                 <div class="donation-item-header">
                     <span class="donation-name">${escapeHtml(d.name)}</span>
@@ -80,12 +111,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 ${d.message ? `<p class="donation-message">${escapeHtml(d.message)}</p>` : ''}
                 <div class="donation-actions">
-                    <button class="action-btn" data-id="${d.id}" data-action="replay" title="Повторить">
-                        <i class="fas fa-redo"></i>
-                    </button>
-                    <button class="action-btn" data-id="${d.id}" data-action="delete" title="Удалить">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <button onclick="replayDonation(${d.id})" class="btn btn-sm btn-secondary">Повторить</button>
+                    <button onclick="deleteDonation(${d.id})" class="btn btn-sm btn-danger">Удалить</button>
                 </div>
             </div>
         `).join('');
@@ -130,102 +157,167 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.ttsVolumeInput.value = currentData.settings.tts_volume;
         }
     }
-    
-    function connectWebSocket() {
-        if (!elements.userIdInput) {
-            console.error('Не удалось найти user_id. WebSocket не будет подключен.');
-            return;
-        }
-        
-        const user_id = elements.userIdInput.dataset.userId;
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
 
-        ws.onopen = () => console.log('WebSocket соединение установлено.');
+    // --- Глобальные функции для кнопок ---
+    window.replayDonation = async function(donationId) {
+        const result = await fetchApi(`/replay_donation/${donationId}`, 'POST');
+        if (result && result.status === 'success') {
+            logToConsole(`🔄 Повторное воспроизведение доната #${donationId}`, 'info');
+        }
+    };
+
+    window.deleteDonation = async function(donationId) {
+        if (confirm('Удалить этот донат?')) {
+            const result = await fetchApi(`/delete_donation/${donationId}`, 'POST');
+            if (result && result.status === 'success') {
+                logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
+            }
+        }
+    };
+
+    // --- Логирование в консоль на странице ---
+    function logToConsole(message, type = 'info') {
+        if (!elements.consoleOutput) return;
+        
+        const now = new Date();
+        const timestamp = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
+
+        const p = document.createElement('p');
+        p.className = `log-${type}`;
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'log-time';
+        timeSpan.textContent = `${timestamp} `;
+
+        p.appendChild(timeSpan);
+        p.appendChild(document.createTextNode(message));
+
+        elements.consoleOutput.appendChild(p);
+        elements.consoleOutput.scrollTop = elements.consoleOutput.scrollHeight;
+        
+        // Ограничиваем количество сообщений
+        const logs = elements.consoleOutput.children;
+        if (logs.length > 100) {
+            elements.consoleOutput.removeChild(logs[0]);
+        }
+    }
+
+    // --- WebSocket ---
+    function connectWebSocket() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
+        ws.onopen = () => {
+            console.log('WebSocket соединение установлено.');
+            logToConsole('WebSocket соединение установлено.', 'success');
+        };
+
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            if (message.type === 'full_update') {
-                currentData = message.data;
-                renderAll();
-            }
+            handleWebSocketMessage(message);
         };
+
         ws.onclose = () => {
             console.log('WebSocket соединение закрыто. Попытка переподключения...');
+            logToConsole('WebSocket соединение закрыто. Попытка переподключения...', 'error');
             setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+            logToConsole('WebSocket ошибка.', 'error');
         };
     }
 
     // --- Обработчики событий ---
     function initEventListeners() {
-        elements.addDonationForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = {
-                name: formData.get('name') || 'Аноним',
-                amount: parseFloat(formData.get('amount')),
-                message: formData.get('message')
-            };
-            await fetchApi('/add_manual_donation', 'POST', data);
-            e.target.reset();
-        });
-
-        elements.goalForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const data = {
-                title: elements.goalTitleInput.value,
-                target: parseFloat(elements.goalTargetInput.value)
-            };
-            await fetchApi('/update_goal', 'POST', data);
-        });
-        
-        elements.settingsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const data = {
-                min_amount: parseFloat(elements.minAmountInput.value),
-                tts_enabled: elements.ttsEnabledInput.checked,
-                tts_volume: parseFloat(elements.ttsVolumeInput.value)
-            };
-            await fetchApi('/update_settings', 'POST', data);
-        });
-
-        elements.resetDonationsBtn.addEventListener('click', async () => {
-            if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
-                await fetchApi('/reset_donations', 'POST');
-            }
-        });
-        
-        elements.testDonationBtn.addEventListener('click', async () => {
-             await fetchApi('/test_donation', 'POST');
-        });
-
-        elements.donationsList.addEventListener('click', async (e) => {
-            const button = e.target.closest('.action-btn');
-            if (!button) return;
-            
-            const id = button.dataset.id;
-            const action = button.dataset.action;
-
-            if (action === 'delete') {
-                 if (confirm('Удалить этот донат?')) {
-                    await fetchApi(`/delete_donation/${id}`, 'POST');
+        if (elements.addDonationForm) {
+            elements.addDonationForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = {
+                    name: formData.get('name') || 'Аноним',
+                    amount: parseFloat(formData.get('amount')),
+                    message: formData.get('message')
+                };
+                const result = await fetchApi('/add_manual_donation', 'POST', data);
+                if (result && result.status === 'success') {
+                    logToConsole(`➕ Добавлен донат: ${data.name} - ${data.amount}₸`, 'success');
+                    e.target.reset();
                 }
-            } else if (action === 'replay') {
-                await fetchApi(`/replay_donation/${id}`, 'POST');
-            }
-        });
+            });
+        }
+
+        if (elements.goalForm) {
+            elements.goalForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = {
+                    title: elements.goalTitleInput.value,
+                    target: parseFloat(elements.goalTargetInput.value)
+                };
+                const result = await fetchApi('/update_goal', 'POST', data);
+                if (result && result.status === 'success') {
+                    logToConsole(`🎯 Цель обновлена: ${data.title} - ${data.target}₸`, 'info');
+                }
+            });
+        }
+        
+        if (elements.settingsForm) {
+            elements.settingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = {
+                    min_amount: parseFloat(elements.minAmountInput.value),
+                    tts_enabled: elements.ttsEnabledInput.checked,
+                    tts_volume: parseFloat(elements.ttsVolumeInput.value)
+                };
+                const result = await fetchApi('/update_settings', 'POST', data);
+                if (result && result.status === 'success') {
+                    logToConsole(`⚙️ Настройки обновлены`, 'info');
+                }
+            });
+        }
+
+        if (elements.resetDonationsBtn) {
+            elements.resetDonationsBtn.addEventListener('click', async () => {
+                if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
+                    const result = await fetchApi('/reset_donations', 'POST');
+                    if (result && result.status === 'success') {
+                        logToConsole(`🗑️ История донатов сброшена`, 'warning');
+                    }
+                }
+            });
+        }
+        
+        if (elements.testDonationBtn) {
+            elements.testDonationBtn.addEventListener('click', async () => {
+                const result = await fetchApi('/test_donation', 'POST');
+                if (result && result.status === 'success') {
+                    logToConsole('🧪 Тестовый донат отправлен', 'info');
+                }
+            });
+        }
     }
 
-    // --- Инициализация ---
-    async function init() {
+    // --- Загрузка данных ---
+    async function loadData() {
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
             renderAll();
         }
-        
-        connectWebSocket();
-        initEventListeners();
     }
 
-    init();
+    // --- Инициализация ---
+    logToConsole('🚀 Панель управления загружена', 'info');
+    connectWebSocket();
+    loadData();
+    initEventListeners();
+    
+    // Периодически обновляем статус Phone Link
+    setInterval(async () => {
+        const status = await fetchApi('/get_phone_status');
+        if (status) {
+            updatePhoneStatus(status);
+        }
+    }, 5000);
 });

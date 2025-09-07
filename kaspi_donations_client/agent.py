@@ -27,6 +27,7 @@ if not API_KEY:
 # TODO: Замените на реальный адрес сервера после развертывания (например, https://<ваше_приложение>.onrender.com)
 SERVER_URL = "http://127.0.0.1:5000"
 SUBMIT_DONATION_ENDPOINT = f"{SERVER_URL}/api/submit_donation"
+PHONE_STATUS_ENDPOINT = f"{SERVER_URL}/api/update_phone_status"
 
 # Глобальные переменные
 PHONE_STATUS = {
@@ -152,6 +153,22 @@ def send_donation_to_server(donation_info):
     except Exception as e:
         print(f"❌ Непредвиденная ошибка при отправке: {e}")
 
+def send_phone_status_to_server():
+    """
+    Отправляет статус Phone Link на сервер.
+    """
+    headers = {'X-API-Key': API_KEY}
+    
+    try:
+        response = requests.post(PHONE_STATUS_ENDPOINT, json=PHONE_STATUS, headers=headers)
+        if response.status_code != 200:
+            print(f"⚠️ Не удалось обновить статус на сервере: {response.status_code}")
+    except requests.exceptions.RequestException:
+        # Игнорируем сетевые ошибки для статуса, чтобы не засорять логи
+        pass
+    except Exception:
+        pass
+
 
 def notification_parser_thread():
     """
@@ -165,6 +182,7 @@ def notification_parser_thread():
         try:
             if not os.path.exists(DB_PATH):
                 PHONE_STATUS.update({"connected": False, "message": "База данных не найдена", "last_check": time.time()})
+                send_phone_status_to_server()
                 print(f"❌ База данных не найдена по пути: {DB_PATH}")
                 time.sleep(10)
                 continue
@@ -172,13 +190,21 @@ def notification_parser_thread():
             try:
                 # Открываем базу данных только для чтения, чтобы избежать блокировки
                 con = sqlite3.connect(f'file:{DB_PATH}?mode=ro', uri=True)
-                PHONE_STATUS.update({"connected": True, "message": "Подключено и отслеживается", "last_check": time.time()})
+                last_modified_time = os.path.getmtime(DB_PATH)
+                if (time.time() - last_modified_time) > 120:
+                    PHONE_STATUS.update({"connected": True, "message": "Подключено (ожидание уведомлений)", "last_check": time.time()})
+                else:
+                    PHONE_STATUS.update({"connected": True, "message": "Подключено и отслеживается", "last_check": time.time()})
+                send_phone_status_to_server()
             except sqlite3.OperationalError as e:
                 if "database is locked" in str(e):
+                    PHONE_STATUS.update({"connected": True, "message": "Подключено и отслеживается", "last_check": time.time()})
+                    send_phone_status_to_server()
                     time.sleep(2)
                     continue
                 else:
                     PHONE_STATUS.update({"connected": False, "message": f"Ошибка SQLite: {e}", "last_check": time.time()})
+                    send_phone_status_to_server()
                     print(f"❌ Ошибка подключения к базе: {e}")
                     time.sleep(5)
                     continue
@@ -228,6 +254,7 @@ def notification_parser_thread():
             con.close()
         except Exception as e:
             PHONE_STATUS.update({"connected": False, "message": f"Критическая ошибка: {e}", "last_check": time.time()})
+            send_phone_status_to_server()
             print(f"❌ Критическая ошибка в парсере: {e}")
         
         time.sleep(2)

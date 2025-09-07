@@ -51,6 +51,14 @@
                     </div>
                 </div>
                  <div class="card">
+                    <h3 class="card-title">Статус Phone Link</h3>
+                    <div id="phone-status-indicator" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Загрузка...</span>
+                    </div>
+                </div>
+
+                <div class="card">
                     <h3 class="card-title">Инструменты</h3>
                     <div class="form-actions">
                          <button id="test-donation-btn" class="btn btn-primary">Тестовый донат</button>
@@ -123,21 +131,15 @@
                     <h3 class="card-title">
                         История донатов
                     </h3>
-                    <div id="donations-list" class="donations-list">
-                        <p>Загрузка...</p>
-                    </div>
                 </div>
                 <div class="card">
-                    <h3 class="card-title">Топ донатеров</h3>
-                    <div id="top-donators-list" class="donations-list">
-                       <p>Загрузка...</p>
-                    </div>
+                    <h3 class="card-title">Консоль агента</h3>
+                    <div id="console-output" class="console-output"></div>
                 </div>
             </aside>
         </main>
     </div>
-    {% block scripts_extra %}
+
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    {% endblock %}
 </body>
 </html>

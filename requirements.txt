@@ -4,3 +4,5 @@ Werkzeug
 Flask-SQLAlchemy
 Flask-Sock
 gunicorn
+gtts
+requests

@@ -25,6 +25,7 @@ body {
     margin: 0;
     background: linear-gradient(90deg, #886CFF, #6DD5FA);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -166,42 +167,50 @@ textarea {
 
 /* Кнопки */
 .btn {
-    padding: 12px 20px;
+    padding: 10px 20px;
     border: none;
     border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
-    flex-grow: 1;
+    text-decoration: none;
+    display: inline-block;
     text-align: center;
 }
 
 .btn-primary {
-    background: linear-gradient(90deg, #886CFF, #6345ED);
+    background: linear-gradient(135deg, #886CFF, #6DD5FA);
     color: white;
-    box-shadow: 0 4px 15px rgba(136, 108, 255, 0.3);
 }
+
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(136, 108, 255, 0.4);
+    box-shadow: 0 8px 20px rgba(136, 108, 255, 0.3);
 }
 
 .btn-secondary {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    color: #E0E0E0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
+
 .btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .btn-danger {
-    background-color: #E53935;
+    background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
     color: white;
 }
+
 .btn-danger:hover {
-    background-color: #C62828;
     transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.8rem;
 }
 
 /* Списки донатов */
@@ -288,6 +297,7 @@ textarea {
 
 input[type=range] {
   -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   background: transparent;
 }
