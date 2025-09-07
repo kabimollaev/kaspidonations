@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaspi Donations - Оповещения о донатах для стримеров</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="container">
+            <div class="logo">KaspiDonations</div>
+            <nav class="main-nav">
+                <a href="#features">Возможности</a>
+                <a href="#pricing">Цена</a>
+                <a href="#contact">Контакты</a>
+            </nav>
+            <div class="header-actions">
+                <a href="{{ url_for('login') }}" class="btn btn-secondary">Вход</a>
+                <a href="{{ url_for('register') }}" class="btn btn-primary">Регистрация</a>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Принимайте донаты с Kaspi.kz прямо на стриме</h1>
+                <p class="subtitle">Мгновенные оповещения, гибкая настройка виджетов и голосовое озвучивание донатов для вашей трансляции на Twitch, YouTube и других площадках.</p>
+                <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Начать использовать бесплатно</a>
+            </div>
+        </section>
+
+        <section id="features" class="features">
+            <div class="container">
+                <h2>Все, что нужно для интерактивных стримов</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🖥️</div>
+                        <h3>Интеграция с OBS и XSplit</h3>
+                        <p>Просто добавьте виджеты как источник "Браузер" в вашу программу для стриминга и начните получать оповещения.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔔</div>
+                        <h3>Мгновенные оповещения</h3>
+                        <p>Наш Windows-агент отслеживает уведомления от приложения "Связь с телефоном" и моментально отправляет их на стрим.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <h3>Настраиваемые виджеты</h3>
+                        <p>Управляйте внешним видом оповещений, полосы сбора средств, списками последних и лучших донатеров.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔊</div>
+                        <h3>Голосовое озвучивание (TTS)</h3>
+                        <p>Включите автоматическое зачитывание сообщений донатеров приятным голосом, чтобы не отвлекаться от игры.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="pricing" class="pricing">
+            <div class="container">
+                <h2>Простая и понятная цена</h2>
+                <div class="pricing-card">
+                    <h3>Полный доступ</h3>
+                    <div class="price">1500₸ <span>/ месяц</span></div>
+                    <p>Получите доступ ко всем текущим и будущим функциям сервиса.</p>
+                    <ul>
+                        <li>Все виды виджетов</li>
+                        <li>Голосовое озвучивание (TTS)</li>
+                        <li>Windows-агент для отслеживания</li>
+                        <li>Техническая поддержка</li>
+                    </ul>
+                    <a href="#contact" class="btn btn-primary btn-block">Приобрести доступ</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="contact">
+            <div class="container">
+                <h2>Готовы начать?</h2>
+                <p>Для приобретения доступа и по любым вопросам свяжитесь со мной в Telegram. Я помогу с настройкой и активацией вашего аккаунта.</p>
+                <a href="https://t.me/kabi_mollaev" target="_blank" class="btn btn-secondary btn-lg">Написать в Telegram</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="main-footer">
+        <div class="container">
+            <p>&copy; 2025 KaspiDonations. Все права защищены.</p>
+        </div>
+    </footer>
+
+</body>
+</html>
