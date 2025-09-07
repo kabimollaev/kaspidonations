@@ -557,17 +557,17 @@ def ws_route(ws):
         print(f"🔗 WebSocket client connected for user {user_id}. Total clients: {len(app.clients)}")
         ws.send(json.dumps(get_full_update_message(ws.user_id), ensure_ascii=False))
         
-        # Keep connection alive without blocking workers
-        while True:
-            try:
-                # Non-blocking receive - just check if connection is alive
-                data = ws.receive(timeout=0.1)
-                if data is None: 
-                    break
-            except Exception:
-                # On any exception (including timeout), just continue
-                # This prevents worker timeout while keeping connection alive
-                continue
+        # Simple approach - just wait for client to disconnect
+        # No receive loop to avoid worker timeout issues
+        try:
+            # Block until client disconnects or sends data
+            data = ws.receive()
+            if data:
+                # Handle any incoming data if needed
+                pass
+        except Exception:
+            # Connection closed or error occurred
+            pass
                 
     except Exception as e:
         print(f"❌ WebSocket error for user {user_id}: {e}")
