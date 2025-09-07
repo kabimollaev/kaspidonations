@@ -104,7 +104,8 @@ def _create_tts_file(text, user_id):
             full_path = os.path.join(TTS_CACHE_DIR, filename_part)
             tts.save(full_path)
             print(f"✅ TTS создан: {full_path}")
-            tts_url = url_for('serve_tts_cache', filename=filename_part)
+            # ИСПРАВЛЕНИЕ: Собираем URL вручную, чтобы избежать проблем с контекстом запроса
+            tts_url = f"/tts_cache/{filename_part}"
             broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
         except Exception as e:
             print(f"❌ Ошибка создания TTS: {e}")
