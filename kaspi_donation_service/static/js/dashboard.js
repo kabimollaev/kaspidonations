@@ -8,10 +8,11 @@ document.addEventListener('DOMContentLoaded', function() {
         addDonationForm: document.getElementById('add-donation-form'),
         goalForm: document.getElementById('goal-form'),
         settingsForm: document.getElementById('settings-form'),
+        widgetCustomizationForm: document.getElementById('widget-customization-form'), // НОВЫЙ ЭЛЕМЕНТ
         resetDonationsBtn: document.getElementById('reset-donations-btn'),
         testDonationBtn: document.getElementById('test-donation-btn'),
         donationsList: document.getElementById('donations-list'),
-        topDonatorsList: document.getElementById('top-donators-list'),
+        topDonatorsList: document.getElementById('top-donators-list'), // НОВЫЙ ЭЛЕМЕНТ
         phoneStatusIndicator: document.getElementById('phone-status-indicator'),
         consoleOutput: document.getElementById('console-output'),
         
@@ -21,6 +22,10 @@ document.addEventListener('DOMContentLoaded', function() {
         minAmountInput: document.getElementById('min-amount'),
         ttsEnabledInput: document.getElementById('tts-enabled'),
         ttsVolumeInput: document.getElementById('tts-volume'),
+        alertPresetSelect: document.getElementById('alert-preset'), // НОВЫЙ ЭЛЕМЕНТ
+        soundPresetSelect: document.getElementById('sound-preset'), // НОВЫЙ ЭЛЕМЕНТ
+        alertCustomUrlInput: document.getElementById('alert-custom-url'), // НОВЫЙ ЭЛЕМЕНТ
+        soundCustomUrlInput: document.getElementById('sound-custom-url'), // НОВЫЙ ЭЛЕМЕНТ
         userIdInput: document.querySelector('input[name="api-key-input"]')
     };
 
@@ -78,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderAll() {
         if (!currentData) return;
         renderDonationsList();
-        // renderTopDonators(); // Эта функция не используется на dashboard, она в своем виджете
+        renderTopDonators(); // НОВЫЙ ВЫЗОВ
         updateForms();
         if (currentData.phone_status) {
             updatePhoneStatus(currentData.phone_status);
@@ -117,6 +122,36 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `).join('');
     }
+    
+    // НОВАЯ ФУНКЦИЯ ДЛЯ РЕНДЕРИНГА ТОП ДОНАТЕРОВ
+    function renderTopDonators() {
+        const donations = currentData.donations || [];
+        const donatorsList = elements.topDonatorsList;
+        if (!donatorsList) return;
+
+        const topDonators = donations.reduce((acc, d) => {
+            acc[d.name] = (acc[d.name] || 0) + d.amount;
+            return acc;
+        }, {});
+
+        const sorted = Object.entries(topDonators)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10);
+
+        if (sorted.length === 0) {
+            donatorsList.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов пока нет.</p>';
+            return;
+        }
+        
+        donatorsList.innerHTML = sorted.map(([name, amount], index) => `
+            <div class="donator-item">
+                <span class="donator-rank">#${index + 1}</span>
+                <span class="donator-name">${escapeHtml(name)}</span>
+                <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
+            </div>
+        `).join('');
+    }
+
 
     function updateForms() {
         if (currentData.goal && elements.goalTitleInput) {
@@ -127,8 +162,32 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.minAmountInput.value = currentData.settings.min_amount || 0;
             elements.ttsEnabledInput.checked = currentData.settings.tts_enabled || false;
             elements.ttsVolumeInput.value = currentData.settings.tts_volume || 0.7;
+            
+            // НОВОЕ: Обновление формы кастомизации
+            elements.alertPresetSelect.value = currentData.settings.alert_preset || 'kaspi_default';
+            elements.soundPresetSelect.value = currentData.settings.sound_preset || 'default';
+            elements.alertCustomUrlInput.value = currentData.settings.alert_custom_url || '';
+            elements.soundCustomUrlInput.value = currentData.settings.sound_custom_url || '';
+            
+            toggleCustomUrlInputs();
         }
     }
+    
+    // НОВАЯ ФУНКЦИЯ для переключения полей ввода URL
+    function toggleCustomUrlInputs() {
+        if (elements.alertPresetSelect.value === 'custom') {
+            elements.alertCustomUrlInput.style.display = 'block';
+        } else {
+            elements.alertCustomUrlInput.style.display = 'none';
+        }
+        
+        if (elements.soundPresetSelect.value === 'custom') {
+            elements.soundCustomUrlInput.style.display = 'block';
+        } else {
+            elements.soundCustomUrlInput.style.display = 'none';
+        }
+    }
+
 
     // --- Глобальные функции для кнопок ---
     window.replayDonation = async function(donationId) {
@@ -257,6 +316,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
+        
+        // НОВОЕ: Обработчик для формы кастомизации виджетов
+        if (elements.widgetCustomizationForm) {
+            elements.widgetCustomizationForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = {
+                    alert_preset: elements.alertPresetSelect.value,
+                    sound_preset: elements.soundPresetSelect.value,
+                    alert_custom_url: elements.alertCustomUrlInput.value || null,
+                    sound_custom_url: elements.soundCustomUrlInput.value || null
+                };
+                const result = await fetchApi('/update_widget_settings', 'POST', data);
+                if (result && result.status === 'success') {
+                    logToConsole(`🎨 Настройки виджетов обновлены`, 'info');
+                }
+            });
+            
+            elements.alertPresetSelect.addEventListener('change', toggleCustomUrlInputs);
+            elements.soundPresetSelect.addEventListener('change', toggleCustomUrlInputs);
+        }
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
@@ -293,13 +372,4 @@ document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
     loadData();
     initEventListeners();
-    
-    // Убираем старый поллинг, так как теперь обновления приходят по WebSocket
-    // setInterval(async () => {
-    //     const status = await fetchApi('/get_phone_status');
-    //     if (status) {
-    //         updatePhoneStatus(status);
-    //     }
-    // }, 10000); 
 });
-
