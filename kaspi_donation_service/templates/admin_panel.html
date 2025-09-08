@@ -17,6 +17,8 @@
                 <th>Имя пользователя</th>
                 <th>Роль</th>
                 <th>Статус</th>
+                <!-- НОВОЕ ПОЛЕ -->
+                <th>Пробный период (дней)</th>
                 <th>Действие</th>
             </tr>
         </thead>
@@ -35,11 +37,25 @@
                     <td>
                         <select name="status" class="form-control">
                             <option value="active" {% if u.status == 'active' %}selected{% endif %}>Active</option>
+                            <option value="trial" {% if u.status == 'trial' %}selected{% endif %}>Trial</option>
                             <option value="inactive" {% if u.status == 'inactive' %}selected{% endif %}>Inactive</option>
                         </select>
                     </td>
+                    <!-- НОВЫЙ СТОЛБЕЦ -->
                     <td>
-                        <button type="submit" class="btn-update">Обновить</button>
+                        {% if u.trial_days != 'N/A' %}
+                            {{ u.trial_days }}
+                        {% else %}
+                            {{ u.trial_days }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 5px;">
+                            <button type="submit" class="btn-update">Обновить</button>
+                            {% if u.status == 'trial' %}
+                            <a href="{{ url_for('extend_trial', user_id=u.id) }}" class="btn-update" style="background-color: #008CBA;">Продлить</a>
+                            {% endif %}
+                        </div>
                     </td>
                 </form>
             </tr>
@@ -49,4 +65,3 @@
     <a href="{{ url_for('dashboard') }}" class="back-link">Вернуться в панель управления</a>
 </div>
 {% endblock %}
-
