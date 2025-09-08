@@ -48,7 +48,9 @@ document.addEventListener('DOMContentLoaded', function() {
             options.body = JSON.stringify(body);
         }
         try {
-            const response = await fetch(`${API_URL}${endpoint}`, options);
+            // ИЗМЕНЕНИЕ: Исправлен вызов fetch, чтобы избежать двойного /api
+            const url = endpoint.startsWith(API_URL) ? endpoint : `${API_URL}${endpoint}`;
+            const response = await fetch(url, options);
             if (!response.ok) {
                 console.error(`Ошибка API: ${response.statusText}`);
                 const errorData = await response.json().catch(() => null);
@@ -253,8 +255,8 @@ document.addEventListener('DOMContentLoaded', function() {
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
         ws.onopen = () => {
-            console.log('WebSocket соединение установлено.');
-            logToConsole('WebSocket соединение установлено.', 'success');
+            console.log('Соединение с WebSocket установлено.');
+            logToConsole('Соединение с WebSocket установлено.', 'success');
         };
 
         ws.onmessage = (event) => {
@@ -263,13 +265,13 @@ document.addEventListener('DOMContentLoaded', function() {
         };
 
         ws.onclose = () => {
-            console.log('WebSocket соединение закрыто. Попытка переподключения...');
-            logToConsole('WebSocket соединение закрыто. Попытка переподключения...', 'error');
+            console.log('Соединение с WebSocket закрыто. Попытка переподключения...');
+            logToConsole('Соединение с WebSocket закрыто. Попытка переподключения...', 'error');
             setTimeout(connectWebSocket, 3000);
         };
 
         ws.onerror = (error) => {
-            console.error('WebSocket Error:', error);
+            console.error('WebSocket ошибка.', 'error');
             logToConsole('WebSocket ошибка.', 'error');
             ws.close();
         };
@@ -332,7 +334,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     tts_enabled: elements.ttsEnabledInput.checked,
                     tts_volume: parseFloat(elements.ttsVolumeInput.value)
                 };
-                const result = await fetchApi('/api/update_settings', 'POST', data);
+                const result = await fetchApi('/update_settings', 'POST', data);
                 if (result && result.status === 'success') {
                     logToConsole(`⚙️ Настройки обновлены`, 'info');
                 }
@@ -355,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
                 if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
-                    const result = await fetchApi('/api/reset_donations', 'POST');
+                    const result = await fetchApi('/reset_donations', 'POST');
                     if (result && result.status === 'success') {
                         logToConsole(`🗑️ История донатов сброшена`, 'warning');
                     }
@@ -365,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.testDonationBtn) {
             elements.testDonationBtn.addEventListener('click', async () => {
-                const result = await fetchApi('/api/test_donation', 'POST');
+                const result = await fetchApi('/test_donation', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole('🧪 Тестовый донат отправлен', 'info');
                 }
@@ -396,10 +398,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Загрузка данных ---
     async function loadData() {
-        const data = await fetchApi('/api/get_all_data');
+        // ИЗМЕНЕНИЕ: Исправлен вызов fetch
+        const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
-            renderAll();
+            updateUI(data);
         }
     }
 
