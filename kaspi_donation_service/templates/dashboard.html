@@ -18,9 +18,9 @@
                 <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
             </div>
         </header>
-        
+
         {% if trial_info %}
-        <div class="alert-section">
+        <div class="api-key-section" style="background-color: #3f2828; border-color: #dc3545;">
             <p>{{ trial_info }}</p>
         </div>
         {% endif %}
@@ -136,17 +136,76 @@
                         </div>
                     </form>
                 </div>
+                
+                <!-- НОВАЯ СЕКЦИЯ ДЛЯ КАСТОМИЗАЦИИ -->
+                <div class="card">
+                    <h3 class="card-title">Виджеты - Кастомизация</h3>
+                    <form id="widget-customization-form">
+                        <div class="form-group">
+                            <label for="alert-preset">Пресет оповещения</label>
+                            <select id="alert-preset" name="alert-preset" class="form-control">
+                                {% for key, value in ALERT_PRESETS.items() %}
+                                <option value="{{ key }}" {% if key == user.settings.alert_preset %}selected{% endif %}>{{ value.name }}</option>
+                                {% endfor %}
+                                <option value="custom" {% if user.settings.alert_preset not in ALERT_PRESETS %}selected{% endif %}>Своя GIF-анимация</option>
+                            </select>
+                            <input type="url" id="alert-custom-url" name="alert-custom-url" placeholder="URL вашей GIF-анимации" value="{{ user.settings.alert_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.alert_preset in ALERT_PRESETS %}display: none;{% endif %}">
+                        </div>
+                        <div class="form-group">
+                            <label for="sound-preset">Пресет звука</label>
+                            <select id="sound-preset" name="sound-preset" class="form-control">
+                                {% for key, value in SOUND_PRESETS.items() %}
+                                <option value="{{ key }}" {% if key == user.settings.sound_preset %}selected{% endif %}>{{ value.name }}</option>
+                                {% endfor %}
+                                <option value="custom" {% if user.settings.sound_preset not in SOUND_PRESETS %}selected{% endif %}>Свой звук</option>
+                            </select>
+                            <input type="url" id="sound-custom-url" name="sound-custom-url" placeholder="URL вашего звука (.mp3)" value="{{ user.settings.sound_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.sound_preset in SOUND_PRESETS %}display: none;{% endif %}">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Сохранить виджеты</button>
+                        </div>
+                    </form>
+                </div>
             </section>
     
             <aside class="right-column">
+                <!-- НОВЫЙ БЛОК СТАТИСТИКИ -->
+                <div class="card">
+                    <h3 class="card-title">Статистика донатов</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Сегодня</span>
+                            <span class="stat-value">{{ "%.2f"|format(stats.today.sum) }} ₸</span>
+                            <span class="stat-count">{{ stats.today.count }} донатов</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">За месяц</span>
+                            <span class="stat-value">{{ "%.2f"|format(stats.month.sum) }} ₸</span>
+                            <span class="stat-count">{{ stats.month.count }} донатов</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Всего</span>
+                            <span class="stat-value">{{ "%.2f"|format(stats.total.sum) }} ₸</span>
+                            <span class="stat-count">{{ stats.total.count }} донатов</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">История донатов</h3>
-                        <button onclick="window.open('/latest_donations_popout/{{ current_user.id }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
+                        <button onclick="window.open('{{ url_for('latest_donations_popout', user_id=current_user.id) }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
                             Открыть в новом окне
                         </button>
                     </div>
                     <div id="donations-list">
+                        <p>Загрузка...</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="card-title">Топ донатеров</h3>
+                    <div id="top-donators-list">
                         <p>Загрузка...</p>
                     </div>
                 </div>
