@@ -508,3 +508,5 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
+    with app.app_context():
+        db.create_all() # Создает все таблицы, если их нет
