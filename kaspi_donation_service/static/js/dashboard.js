@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', function() {
             options.body = JSON.stringify(body);
         }
         try {
-            // ИЗМЕНЕНИЕ: Исправлен вызов fetch, чтобы избежать двойного /api
             const url = endpoint.startsWith(API_URL) ? endpoint : `${API_URL}${endpoint}`;
             const response = await fetch(url, options);
             if (!response.ok) {
@@ -215,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Глобальные функции для кнопок ---
     window.replayDonation = async function(donationId) {
-        const result = await fetchApi(`/replay_donation/${donationId}`, 'POST');
+        const result = await fetchApi(`/api/replay_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
             logToConsole(`🔄 Повторное воспроизведение доната #${donationId}`, 'info');
         }
@@ -223,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.deleteDonation = async function(donationId) {
         if (confirm('Удалить этот донат?')) {
-            const result = await fetchApi(`/delete_donation/${donationId}`, 'POST');
+            const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
             if (result && result.status === 'success') {
                 logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
             }
@@ -398,11 +397,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Загрузка данных ---
     async function loadData() {
-        // ИЗМЕНЕНИЕ: Исправлен вызов fetch
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
-            updateUI(data);
+            renderAll();
         }
     }
 
