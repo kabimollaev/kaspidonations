@@ -260,7 +260,21 @@ def dashboard():
 def admin_panel():
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    return render_template('admin_panel.html', users=users)
+    # ИЗМЕНЕНИЕ: Создаем дополнительную информацию для шаблона
+    users_data = []
+    for u in users:
+        trial_days = 'N/A'
+        if u.status == 'trial' and u.trial_end_date:
+            remaining = u.trial_end_date - datetime.now()
+            trial_days = remaining.days
+        users_data.append({
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'status': u.status,
+            'trial_days': trial_days
+        })
+    return render_template('admin_panel.html', users=users_data)
 
 @app.route('/admin/update_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -274,6 +288,24 @@ def update_user(user_id):
         user.status = request.form.get('status')
         db.session.commit()
         flash(f'Данные пользователя {user.username} обновлены.', 'success')
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
+@login_required
+def extend_trial(user_id):
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
+    user = db.session.get(User, user_id)
+    if not user:
+        flash(f'Пользователь с ID {user_id} не найден.', 'error')
+    else:
+        # Продлеваем пробный период на 14 дней
+        new_end_date = datetime.now() + timedelta(days=14)
+        if user.trial_end_date and user.trial_end_date > datetime.now():
+            new_end_date = user.trial_end_date + timedelta(days=14)
+        user.trial_end_date = new_end_date
+        user.status = 'trial' # Возвращаем статус на "trial"
+        db.session.commit()
+        flash(f'Пробный период пользователя {user.username} продлен.', 'success')
     return redirect(url_for('admin_panel'))
 
 # --- API ---
