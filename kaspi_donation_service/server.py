@@ -23,6 +23,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 # --- Конфигурация приложения ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
+# ИЗМЕНЕНИЕ: Используем environment-переменную DATABASE_URL для PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
