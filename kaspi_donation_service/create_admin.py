@@ -1,15 +1,14 @@
 import secrets
 from getpass import getpass
 from werkzeug.security import generate_password_hash
-from server import app, db, User
+from server import app, db, User, Goal, Settings
 
 def create_admin():
     """Создает первого администратора в системе."""
     with app.app_context():
-        db.create_all()
         # Проверяем, есть ли уже администраторы
         if User.query.filter_by(role='admin').first():
-            print("Администратор уже существует.")
+            print("Администратор уже существует. Сначала удалите его из базы данных.")
             return
 
         print("--- Создание аккаунта администратора ---")
@@ -34,8 +33,13 @@ def create_admin():
 
         db.session.add(admin)
         db.session.commit()
+        
+        # ИЗМЕНЕНИЕ: Создаем объекты Goal и Settings для нового администратора
+        db.session.add(Goal(user_id=admin.id))
+        db.session.add(Settings(user_id=admin.id))
+        db.session.commit()
+        
         print(f"Аккаунт администратора '{username}' успешно создан!")
 
 if __name__ == '__main__':
     create_admin()
-
