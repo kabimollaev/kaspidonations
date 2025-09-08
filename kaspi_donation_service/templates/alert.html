@@ -4,219 +4,206 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alert Widget</title>
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+    <!-- Подключаем все необходимые шрифты заранее -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Montserrat:wght@400;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        /* Сброс стилей для OBS */
         body {
-            background-color: transparent !important;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
+            background-color: transparent;
             margin: 0;
             padding: 0;
-            color: white;
+            overflow: hidden;
+            /* Используем CSS-переменную для шрифта */
+            font-family: var(--alert-font-family);
+            color: var(--alert-title-color);
         }
+
+        /* Общие переменные для кастомизации */
+        :root {
+            --alert-font-family: 'Inter', sans-serif;
+            --alert-title-color: #FFFFFF;
+            --alert-highlight-color: #F14635;
+            --alert-message-color: #A0AEC0;
+        }
+
         .alert-container {
-            position: fixed;
-            top: 50px;
-            left: 0;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .alert-box {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            display: none; /* Скрыт по умолчанию */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 20px;
+            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            max-width: 80%;
+            width: 500px;
             opacity: 0;
-            transform: scale(0.9) translateY(20px);
-            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: opacity 0.5s ease-in-out;
+            animation: fadeIn 0.5s ease-in-out forwards;
         }
-        .alert-box.visible {
-            opacity: 1;
-            transform: scale(1) translateY(0);
+
+        /* Анимация появления */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
         }
-        .alert-gif {
-            width: 120px;
-            height: 120px;
-            object-fit: cover;
-            border-radius: 50%;
-            border: 3px solid #00D1B2;
-            box-shadow: 0 0 20px rgba(0, 209, 178, 0.5);
+        
+        .alert-container.show {
+            display: block;
+        }
+        .alert-container.hide {
+            animation: fadeOut 0.5s ease-in-out forwards;
+        }
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+        }
+
+        .alert-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
             margin-bottom: 20px;
         }
-        .alert-content {
-            background: rgba(10, 10, 10, 0.8);
-            backdrop-filter: blur(5px);
-            border-radius: 12px;
-            padding: 16px 24px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            min-width: 300px;
-        }
-        .alert-main-text {
+        
+        .alert-title {
+            font-size: 2.5rem;
             font-weight: 700;
-            font-size: 1.8rem;
-            line-height: 1.2;
-            margin: 0;
+            color: var(--alert-title-color);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 5px;
         }
-        .alert-main-text .highlight {
-            color: #00D1B2;
+
+        .alert-amount {
+            font-size: 3rem;
             font-weight: 900;
+            color: var(--alert-highlight-color);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
         }
+        
         .alert-message {
+            font-size: 1.5rem;
             font-weight: 500;
-            font-size: 1.1rem;
-            margin-top: 8px;
-            line-height: 1.4;
-            color: #E0E0E0;
-            word-break: break-word; 
+            color: var(--alert-message-color);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            word-wrap: break-word;
         }
+
     </style>
 </head>
 <body>
-    <div id="alert-container" class="alert-container"></div>
-    <audio id="donation-sound"></audio>
-    <script>
-        let ws;
-        let alertQueue = [];
-        let isShowingAlert = false;
-        let currentSettings = {};
-        let lastShownAlertId = null;
-        const alertContainer = document.getElementById('alert-container');
-        const donationSound = document.getElementById('donation-sound');
-        
-        // НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ URL
-        let GIF_URL = '/static/media/alert.gif'; 
-        let SOUND_URL = '/static/media/alert.mp3';
-        
-        const ALERT_DURATION = 8000;
+    <div id="alert-container" class="alert-container">
+        <img id="alert-image" src="" alt="Alert GIF" class="alert-image">
+        <h2 id="alert-title" class="alert-title"></h2>
+        <div id="alert-amount" class="alert-amount"></div>
+        <p id="alert-message" class="alert-message"></p>
+        <audio id="alert-sound" src="" preload="auto"></audio>
+    </div>
 
-        function connectWebSocket() {
-            const userId = "{{ user_id }}";
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const userId = {{ user_id }};
+            const alertContainer = document.getElementById('alert-container');
+            const alertImage = document.getElementById('alert-image');
+            const alertTitle = document.getElementById('alert-title');
+            const alertAmount = document.getElementById('alert-amount');
+            const alertMessage = document.getElementById('alert-message');
+            const alertSound = document.getElementById('alert-sound');
+
+            const ws = new WebSocket(`ws://{{ request.host }}/ws?user_id=${userId}`);
+
+            let alertTimer = null;
+            let currentSettings = null;
             
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение установлено.`);
-            };
-            
+            function updateCustomStyles() {
+                if (currentSettings) {
+                    document.documentElement.style.setProperty('--alert-font-family', currentSettings.font_family);
+                    document.documentElement.style.setProperty('--alert-title-color', currentSettings.title_color);
+                    document.documentElement.style.setProperty('--alert-highlight-color', currentSettings.highlight_color);
+                    document.documentElement.style.setProperty('--alert-message-color', currentSettings.message_color);
+                }
+            }
+
+            function showAlert(data) {
+                if (!currentSettings) {
+                    console.error('Настройки еще не загружены. Ожидаем full_update.');
+                    return;
+                }
+
+                updateCustomStyles();
+
+                // Устанавливаем содержимое
+                alertImage.src = currentSettings.alert_url;
+                alertTitle.textContent = `${data.name} отправил:`;
+                alertAmount.textContent = `${data.amount} ₸`;
+                alertMessage.textContent = data.message || 'без сообщения';
+                
+                // Звук
+                alertSound.src = currentSettings.sound_url;
+                alertSound.volume = currentSettings.tts_volume;
+                alertSound.play().catch(e => console.error("Ошибка воспроизведения звука:", e));
+
+                // Показываем алерт
+                alertContainer.classList.add('show');
+                alertContainer.classList.remove('hide');
+                alertContainer.style.display = 'block';
+                
+                // Скрываем через 10 секунд
+                clearTimeout(alertTimer);
+                alertTimer = setTimeout(() => {
+                    alertContainer.classList.add('hide');
+                    alertContainer.classList.remove('show');
+                    setTimeout(() => {
+                        alertContainer.style.display = 'none';
+                    }, 500); // Совпадает с длительностью анимации
+                }, 10000);
+            }
+
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                
                 if (message.type === 'show_alert') {
-                    console.log('Получена команда show_alert:', message.data);
-                    alertQueue.push(message.data);
-                    processQueue();
+                    showAlert(message.data);
                 } else if (message.type === 'tts') {
-                    playTTS(message.url, currentSettings.tts_volume || 0.7);
-                } else if (message.type === 'full_update') {
-                    currentSettings = message.data.settings || {};
-                    
-                    // НОВОЕ: Обновляем URL-ы на основе полученных настроек
-                    if(currentSettings.alert_url) GIF_URL = currentSettings.alert_url;
-                    if(currentSettings.sound_url) SOUND_URL = currentSettings.sound_url;
-                    
-                    const latestDonation = message.data.donations?.[0];
-                    // ИСПРАВЛЕНИЕ: Проверяем, что донат новый, и добавляем в очередь
-                    if (latestDonation && latestDonation.id !== lastShownAlertId) {
-                         const now = Date.now();
-                         const donationTime = new Date(latestDonation.timestamp).getTime();
-                         // Показываем только свежие донаты (не старше 30 секунд), чтобы не спамить при перезагрузке
-                         if ((now - donationTime) < 30000) {
-                            console.log('Обнаружен новый донат в full_update:', latestDonation);
-                            alertQueue.push(latestDonation);
-                            processQueue();
-                         }
+                    // TTS - это отдельный аудиофайл
+                    const ttsAudio = new Audio(message.url);
+                    if (currentSettings) {
+                         ttsAudio.volume = currentSettings.tts_volume;
                     }
+                    ttsAudio.play().catch(e => console.error("Ошибка воспроизведения TTS:", e));
+                } else if (message.type === 'full_update') {
+                    currentSettings = message.data.settings;
+                    updateCustomStyles();
                 }
-            };
-            
-            ws.onclose = (event) => {
-                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение закрыто. Код: ${event.code}. Попытка переподключения...`);
-                setTimeout(connectWebSocket, 3000);
             };
 
             ws.onerror = (error) => {
-                console.error('WebSocket ошибка:', error);
-                ws.close();
+                console.error('WebSocket Error:', error);
             };
-        }
 
-        function processQueue() {
-            if (isShowingAlert || alertQueue.length === 0) return;
-            isShowingAlert = true;
-            const data = alertQueue.shift();
-            
-            if (data.id === lastShownAlertId) {
-                console.log('Пропускаем дублирующийся алерт:', data.id);
-                isShowingAlert = false;
-                processQueue();
-                return;
-            }
-            lastShownAlertId = data.id;
-            showAlert(data);
-        }
-
-        function showAlert(data) {
-            console.log('Показываем алерт для:', data);
-            const amountFormatted = data.amount.toLocaleString('ru-RU');
-            const messageText = data.message ? escapeHtml(data.message) : '';
-            alertContainer.innerHTML = `
-                <div class="alert-box">
-                    <img src="${GIF_URL}" class="alert-gif" onerror="this.onerror=null;this.src='/static/media/alert.gif';" alt="Donation animation">
-                    <div class="alert-content">
-                        <p class="alert-main-text">
-                            ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
-                        </p>
-                        ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
-                    </div>
-                </div>`;
-            const alertBox = alertContainer.querySelector('.alert-box');
-            
-            try {
-                donationSound.src = SOUND_URL;
-                donationSound.volume = currentSettings.tts_volume || 0.7;
-                donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
-            } catch (e) {
-                console.warn(`Не удалось загрузить звук ${SOUND_URL}.`);
-            }
-            
-            setTimeout(() => alertBox.classList.add('visible'), 100);
-            setTimeout(() => alertBox.classList.remove('visible'), ALERT_DURATION);
-            
-            setTimeout(() => {
-                alertContainer.innerHTML = '';
-                isShowingAlert = false;
-                processQueue();
-            }, ALERT_DURATION + 1000);
-        }
-
-        function playTTS(url, volume) {
-            setTimeout(() => {
-                const ttsAudio = new Audio(url);
-                ttsAudio.volume = volume;
-                ttsAudio.play().catch(e => console.error("Не удалось воспроизвести озвучку.", e));
-            }, 1000);
-        }
-
-        function escapeHtml(unsafe) {
-            if (typeof unsafe !== 'string') return '';
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-        }
-        
-        // НОВЫЙ код, чтобы избежать ошибки с undefined settings
-        connectWebSocket();
-        fetch('/api/get_all_data').then(response => response.json()).then(data => {
-            currentSettings = data.settings || {};
-            if(currentSettings.alert_url) GIF_URL = currentSettings.alert_url;
-            if(currentSettings.sound_url) SOUND_URL = currentSettings.sound_url;
+            ws.onclose = () => {
+                console.log('WebSocket closed. Attempting to reconnect...');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 5000);
+            };
         });
     </script>
 </body>
