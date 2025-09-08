@@ -16,6 +16,7 @@ from gtts import gTTS
 from datetime import datetime, timedelta
 import gevent
 from functools import wraps
+from sqlalchemy import func
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -75,8 +76,30 @@ class Settings(db.Model):
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
     tts_enabled = db.Column(db.Boolean, nullable=False, default=True)
     tts_volume = db.Column(db.Float, nullable=False, default=0.7)
+    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ВИДЖЕТОВ
+    alert_preset = db.Column(db.String(50), nullable=False, default='kaspi_default')
+    sound_preset = db.Column(db.String(50), nullable=False, default='default')
+    alert_custom_url = db.Column(db.String(255), nullable=True)
+    sound_custom_url = db.Column(db.String(255), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
+
+# Константы для готовых пресетов
+ALERT_PRESETS = {
+    'kaspi_default': {'name': 'Kaspi (по умолчанию)', 'url': '/static/media/alert.gif'},
+    'money_stack': {'name': 'Пачка денег', 'url': 'https://media.giphy.com/media/l4pTsh45Dg7mwfLgA/giphy.gif'},
+    'cheering_crowd': {'name': 'Аплодирующая толпа', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
+    'fire_animation': {'name': 'Анимация огня', 'url': 'https://media.giphy.com/media/l4pT4f1B6lM4sT6tO/giphy.gif'},
+    'gold_explosion': {'name': 'Взрыв золота', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
+}
+
+SOUND_PRESETS = {
+    'default': {'name': 'Классический звук', 'url': '/static/media/alert.mp3'},
+    'cash_register': {'name': 'Кассовый аппарат', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+    'fanfare': {'name': 'Фанфары', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'},
+}
+
+# --- Вспомогательные функции ---
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -84,6 +107,25 @@ def load_user(user_id):
 @app.context_processor
 def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
+
+def get_donation_stats(user_id):
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    total_donations_count = Donation.query.filter_by(user_id=user_id).count()
+    total_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).scalar() or 0
+    
+    today_donations_count = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= today_start).count()
+    today_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).filter(Donation.timestamp >= today_start).scalar() or 0
+    
+    month_donations_count = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).count()
+    month_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).scalar() or 0
+    
+    return {
+        'total': {'count': total_donations_count, 'sum': total_donations_sum},
+        'today': {'count': today_donations_count, 'sum': today_donations_sum},
+        'month': {'count': month_donations_count, 'sum': month_donations_sum},
+    }
 
 # --- Фоновые задачи ---
 def cleanup_tts_files():
@@ -135,7 +177,17 @@ def get_full_update_message(user_id):
 
         donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
         goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
-        settings_data = {'min_amount': settings.min_amount, 'tts_enabled': settings.tts_enabled, 'tts_volume': settings.tts_volume} if settings else {}
+        settings_data = {
+            'min_amount': settings.min_amount,
+            'tts_enabled': settings.tts_enabled,
+            'tts_volume': settings.tts_volume,
+            'alert_preset': settings.alert_preset,
+            'sound_preset': settings.sound_preset,
+            'alert_custom_url': settings.alert_custom_url,
+            'sound_custom_url': settings.sound_custom_url,
+            'alert_url': ALERT_PRESETS[settings.alert_preset]['url'] if settings.alert_preset else settings.alert_custom_url,
+            'sound_url': SOUND_PRESETS[settings.sound_preset]['url'] if settings.sound_preset else settings.sound_custom_url,
+        } if settings else {}
         phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
 
         return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
@@ -253,7 +305,10 @@ def dashboard():
         else:
             trial_info = 'Ваш пробный период истек. Для продолжения работы, пожалуйста, приобретите доступ.'
     
-    return render_template('dashboard.html', user=current_user, trial_info=trial_info)
+    stats = get_donation_stats(current_user.id)
+    donations_history = Donation.query.filter_by(user_id=current_user.id).order_by(Donation.timestamp.desc()).limit(10).all()
+    
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, donations_history=donations_history)
 
 @app.route('/admin')
 @login_required
@@ -312,7 +367,13 @@ def extend_trial(user_id):
 @app.route('/api/get_all_data', methods=['GET'])
 @api_login_required
 def get_all_data():
-    return jsonify(get_full_update_message(g.user.id)['data'])
+    user = g.user
+    full_update = get_full_update_message(user.id)
+    
+    # Добавляем статистику в API-ответ
+    full_update['data']['stats'] = get_donation_stats(user.id)
+    
+    return jsonify(full_update['data'])
 
 @app.route('/api/submit_donation', methods=['POST'])
 @api_login_required
@@ -333,7 +394,29 @@ def submit_donation():
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
-# ... (Остальные API маршруты без изменений) ...
+@app.route('/api/update_widget_settings', methods=['POST'])
+@api_login_required
+def update_widget_settings():
+    user = g.user
+    data = request.json
+    
+    settings = user.settings or Settings(user_id=user.id)
+    
+    settings.alert_preset = data.get('alert_preset')
+    settings.sound_preset = data.get('sound_preset')
+    settings.alert_custom_url = data.get('alert_custom_url')
+    settings.sound_custom_url = data.get('sound_custom_url')
+    
+    if not user.settings:
+        db.session.add(settings)
+    
+    db.session.commit()
+    
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    
+    return jsonify({'status': 'success'})
+
+
 @app.route('/api/update_goal', methods=['POST'])
 @api_login_required
 def update_goal():
