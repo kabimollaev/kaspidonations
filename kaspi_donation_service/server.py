@@ -81,6 +81,11 @@ class Settings(db.Model):
     sound_preset = db.Column(db.String(50), nullable=False, default='default')
     alert_custom_url = db.Column(db.String(255), nullable=True)
     sound_custom_url = db.Column(db.String(255), nullable=True)
+    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ТЕКСТА
+    font_family = db.Column(db.String(100), nullable=False, default='Inter')
+    title_color = db.Column(db.String(20), nullable=False, default='#FFFFFF')
+    highlight_color = db.Column(db.String(20), nullable=False, default='#F14635')
+    message_color = db.Column(db.String(20), nullable=False, default='#A0AEC0')
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
 
@@ -187,6 +192,11 @@ def get_full_update_message(user_id):
             'sound_custom_url': settings.sound_custom_url,
             'alert_url': ALERT_PRESETS[settings.alert_preset]['url'] if settings.alert_preset != 'custom' else settings.alert_custom_url,
             'sound_url': SOUND_PRESETS[settings.sound_preset]['url'] if settings.sound_preset != 'custom' else settings.sound_custom_url,
+            # НОВЫЕ ПОЛЯ
+            'font_family': settings.font_family,
+            'title_color': settings.title_color,
+            'highlight_color': settings.highlight_color,
+            'message_color': settings.message_color,
         } if settings else {}
         phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
 
@@ -293,6 +303,21 @@ def register():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+# ВРЕМЕННЫЙ МАРШРУТ ДЛЯ УДАЛЕНИЯ АДМИНА
+@app.route('/delete_admin_by_id')
+def delete_admin_by_id():
+    # Находим пользователя с ролью 'admin'
+    admin_user = User.query.filter_by(role='admin').first()
+    if admin_user:
+        # Удаляем пользователя и все связанные с ним данные
+        db.session.delete(admin_user)
+        db.session.commit()
+        flash(f'Администратор "{admin_user.username}" успешно удален.', 'success')
+    else:
+        flash('Аккаунт администратора не найден.', 'error')
+    return redirect(url_for('register'))
+
 
 @app.route('/dashboard')
 @login_required
@@ -406,6 +431,10 @@ def update_widget_settings():
     settings.sound_preset = data.get('sound_preset')
     settings.alert_custom_url = data.get('alert_custom_url')
     settings.sound_custom_url = data.get('sound_custom_url')
+    settings.font_family = data.get('font_family')
+    settings.title_color = data.get('title_color')
+    settings.highlight_color = data.get('highlight_color')
+    settings.message_color = data.get('message_color')
     
     if not user.settings:
         db.session.add(settings)
