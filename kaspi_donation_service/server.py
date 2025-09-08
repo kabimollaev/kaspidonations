@@ -49,6 +49,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    trial_end_date = db.Column(db.DateTime, nullable=True) # Новое поле для пробного периода
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -139,16 +140,46 @@ def get_full_update_message(user_id):
         return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
 
 # --- Декоратор для API ---
+def check_trial_status(user):
+    # Если пользователь - админ, ему всегда разрешен доступ
+    if user.role == 'admin':
+        return True, None
+    # Если пользователь активен (платная подписка), ему разрешен доступ
+    if user.status == 'active':
+        return True, None
+    # Если у пользователя есть пробный период, проверяем, не истек ли он
+    if user.trial_end_date:
+        if datetime.now() < user.trial_end_date:
+            return True, user.trial_end_date
+        else:
+            # Пробный период истек, меняем статус на "inactive"
+            user.status = 'inactive'
+            db.session.commit()
+            return False, 'Пробный период истек.'
+    # Если пользователь не активен и нет пробного периода, доступ запрещен
+    return False, 'Аккаунт неактивен.'
+
+
 def api_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        user = None
+        # Проверка по сессии (для браузера)
         if current_user.is_authenticated:
-            g.user = current_user
-            return f(*args, **kwargs)
-        api_key = request.headers.get('X-API-Key')
-        if not api_key: return jsonify({'error': 'Доступ запрещен'}), 401
-        user = User.query.filter_by(api_key=api_key).first()
-        if not user or user.status != 'active': return jsonify({'error': 'Неверный API-ключ'}), 403
+            user = current_user
+        else:
+            # Проверка по API-ключу (для приложения на ПК)
+            api_key = request.headers.get('X-API-Key')
+            if not api_key:
+                return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
+            user = User.query.filter_by(api_key=api_key).first()
+            if not user:
+                return jsonify({'error': 'Неверный API-ключ.'}), 403
+        
+        is_allowed, message = check_trial_status(user)
+        if not is_allowed:
+            return jsonify({'error': message}), 403
+
         g.user = user
         return f(*args, **kwargs)
     return decorated_function
@@ -160,15 +191,23 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated: return redirect(url_for('dashboard'))
+    if current_user.is_authenticated: 
+        is_allowed, message = check_trial_status(current_user)
+        if is_allowed:
+            return redirect(url_for('dashboard'))
+        else:
+            flash(message, 'error')
+            logout_user()
+
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form.get('username')).first()
         if user and check_password_hash(user.password_hash, request.form.get('password')):
-            if user.status == 'active':
+            is_allowed, message = check_trial_status(user)
+            if is_allowed:
                 login_user(user, remember=True)
                 return redirect(url_for('dashboard'))
             else:
-                flash('Ваш аккаунт неактивен.', 'error')
+                flash(message, 'error')
         else:
             flash('Неверный логин или пароль.', 'error')
     return render_template('login.html')
@@ -181,13 +220,18 @@ def register():
             flash('Имя пользователя уже занято.', 'error')
         else:
             hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
-            new_user = User(username=request.form.get('username'), password_hash=hashed_pw)
+            new_user = User(
+                username=request.form.get('username'),
+                password_hash=hashed_pw,
+                status='trial', # Новый статус
+                trial_end_date=datetime.now() + timedelta(days=14) # Дата окончания пробного периода
+            )
             db.session.add(new_user)
             db.session.commit()
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-            flash('Регистрация прошла успешно! Ожидайте активации.', 'success')
+            flash('Регистрация прошла успешно! Вам предоставлен 14-дневный бесплатный период.', 'success')
             return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -200,7 +244,15 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard.html', user=current_user)
+    trial_info = None
+    if current_user.status == 'trial' and current_user.trial_end_date:
+        remaining_days = (current_user.trial_end_date - datetime.now()).days
+        if remaining_days > 0:
+            trial_info = f'До конца пробного периода осталось {remaining_days} дней.'
+        else:
+            trial_info = 'Ваш пробный период истек. Для продолжения работы, пожалуйста, приобретите доступ.'
+    
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info)
 
 @app.route('/admin')
 @login_required
@@ -322,7 +374,7 @@ def replay_donation(donation_id):
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
-        tts_message = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
+        tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
         gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
@@ -355,22 +407,53 @@ def update_phone_status():
 # --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
+    # Добавляем проверку статуса пользователя для виджетов
+    user = User.query.get(user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
     return render_template('alert.html', user_id=user_id)
 
 @app.route('/goal/<int:user_id>')
 def goal_widget(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
     return render_template('goal.html', user_id=user_id)
 
 @app.route('/top_donators/<int:user_id>')
 def top_donators_widget(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
     return render_template('top_donators.html', user_id=user_id)
 
 @app.route('/latest_donations/<int:user_id>')
 def latest_donations_widget(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
     return render_template('latest_donations.html', user_id=user_id)
     
 @app.route('/latest_donations_popout/<int:user_id>')
 def latest_donations_popout(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
     return render_template('latest_donations_popout.html', user_id=user_id)
 
 @app.route('/tts_cache/<path:filename>')
@@ -389,6 +472,22 @@ def ws(ws):
         if current_user.is_authenticated:
             user_id = current_user.id
         else: return
+        
+    user = User.query.get(user_id)
+    if not user:
+        ws.close()
+        return
+
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        # Отправляем сообщение об ошибке, если пробный период истек
+        try:
+            ws.send(json.dumps({"type": "error", "message": message}))
+        except Exception:
+            pass
+        ws.close()
+        return
+        
     if user_id not in clients:
         clients[user_id] = set()
     clients[user_id].add(ws)
@@ -409,4 +508,3 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
-
