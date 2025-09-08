@@ -8,11 +8,11 @@ document.addEventListener('DOMContentLoaded', function() {
         addDonationForm: document.getElementById('add-donation-form'),
         goalForm: document.getElementById('goal-form'),
         settingsForm: document.getElementById('settings-form'),
-        widgetCustomizationForm: document.getElementById('widget-customization-form'), // НОВЫЙ ЭЛЕМЕНТ
+        widgetCustomizationForm: document.getElementById('widget-customization-form'),
         resetDonationsBtn: document.getElementById('reset-donations-btn'),
         testDonationBtn: document.getElementById('test-donation-btn'),
         donationsList: document.getElementById('donations-list'),
-        topDonatorsList: document.getElementById('top-donators-list'), // НОВЫЙ ЭЛЕМЕНТ
+        topDonatorsList: document.getElementById('top-donators-list'),
         phoneStatusIndicator: document.getElementById('phone-status-indicator'),
         consoleOutput: document.getElementById('console-output'),
         
@@ -22,11 +22,15 @@ document.addEventListener('DOMContentLoaded', function() {
         minAmountInput: document.getElementById('min-amount'),
         ttsEnabledInput: document.getElementById('tts-enabled'),
         ttsVolumeInput: document.getElementById('tts-volume'),
-        alertPresetSelect: document.getElementById('alert-preset'), // НОВЫЙ ЭЛЕМЕНТ
-        soundPresetSelect: document.getElementById('sound-preset'), // НОВЫЙ ЭЛЕМЕНТ
-        alertCustomUrlInput: document.getElementById('alert-custom-url'), // НОВЫЙ ЭЛЕМЕНТ
-        soundCustomUrlInput: document.getElementById('sound-custom-url'), // НОВЫЙ ЭЛЕМЕНТ
-        userIdInput: document.querySelector('input[name="api-key-input"]')
+        alertPresetSelect: document.getElementById('alert-preset'),
+        alertCustomUrlInput: document.getElementById('alert-custom-url'),
+        soundPresetSelect: document.getElementById('sound-preset'),
+        soundCustomUrlInput: document.getElementById('sound-custom-url'),
+        fontFamilySelect: document.getElementById('font-family'),
+        titleColorInput: document.getElementById('title-color'),
+        highlightColorInput: document.getElementById('highlight-color'),
+        messageColorInput: document.getElementById('message-color'),
+        apiKeyInput: document.getElementById('api-key-input')
     };
 
     let lastPhoneStatus = '';
@@ -35,7 +39,10 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchApi(endpoint, method = 'GET', body = null) {
         const options = {
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-API-Key': elements.apiKeyInput.value
+            },
         };
         if (body) {
             options.body = JSON.stringify(body);
@@ -83,8 +90,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderAll() {
         if (!currentData) return;
         renderDonationsList();
-        renderTopDonators(); // НОВЫЙ ВЫЗОВ
+        renderTopDonators();
         updateForms();
+        updateStats();
         if (currentData.phone_status) {
             updatePhoneStatus(currentData.phone_status);
         }
@@ -123,28 +131,27 @@ document.addEventListener('DOMContentLoaded', function() {
         `).join('');
     }
     
-    // НОВАЯ ФУНКЦИЯ ДЛЯ РЕНДЕРИНГА ТОП ДОНАТЕРОВ
     function renderTopDonators() {
         const donations = currentData.donations || [];
-        const donatorsList = elements.topDonatorsList;
-        if (!donatorsList) return;
-
+        const listEl = elements.topDonatorsList;
+        if (!listEl) return;
+    
         const topDonators = donations.reduce((acc, d) => {
             acc[d.name] = (acc[d.name] || 0) + d.amount;
             return acc;
         }, {});
-
+    
         const sorted = Object.entries(topDonators)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 10);
-
+    
         if (sorted.length === 0) {
-            donatorsList.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов пока нет.</p>';
+            listEl.innerHTML = '<p>Донатов пока нет.</p>';
             return;
         }
-        
-        donatorsList.innerHTML = sorted.map(([name, amount], index) => `
-            <div class="donator-item">
+    
+        listEl.innerHTML = sorted.map(([name, amount], index) => `
+            <div class="top-donator-item">
                 <span class="donator-rank">#${index + 1}</span>
                 <span class="donator-name">${escapeHtml(name)}</span>
                 <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
@@ -152,42 +159,57 @@ document.addEventListener('DOMContentLoaded', function() {
         `).join('');
     }
 
-
     function updateForms() {
-        if (currentData.goal && elements.goalTitleInput) {
-            elements.goalTitleInput.value = currentData.goal.title || '';
-            elements.goalTargetInput.value = currentData.goal.target_amount || '';
+        const settings = currentData.settings || {};
+        const goal = currentData.goal || {};
+
+        if (elements.goalTitleInput) {
+            elements.goalTitleInput.value = goal.title || '';
+            elements.goalTargetInput.value = goal.target_amount || '';
         }
-        if (currentData.settings && elements.minAmountInput) {
-            elements.minAmountInput.value = currentData.settings.min_amount || 0;
-            elements.ttsEnabledInput.checked = currentData.settings.tts_enabled || false;
-            elements.ttsVolumeInput.value = currentData.settings.tts_volume || 0.7;
-            
-            // НОВОЕ: Обновление формы кастомизации
-            elements.alertPresetSelect.value = currentData.settings.alert_preset || 'kaspi_default';
-            elements.soundPresetSelect.value = currentData.settings.sound_preset || 'default';
-            elements.alertCustomUrlInput.value = currentData.settings.alert_custom_url || '';
-            elements.soundCustomUrlInput.value = currentData.settings.sound_custom_url || '';
-            
-            toggleCustomUrlInputs();
+        
+        if (elements.minAmountInput) {
+            elements.minAmountInput.value = settings.min_amount || 0;
+            elements.ttsEnabledInput.checked = settings.tts_enabled || false;
+            elements.ttsVolumeInput.value = settings.tts_volume || 0.7;
+        }
+        
+        // Обновление полей кастомизации
+        if (elements.alertPresetSelect) {
+            elements.alertPresetSelect.value = settings.alert_preset || 'kaspi_default';
+            elements.alertCustomUrlInput.value = settings.alert_custom_url || '';
+            elements.alertCustomUrlInput.style.display = (settings.alert_preset === 'custom') ? 'block' : 'none';
+        }
+        if (elements.soundPresetSelect) {
+            elements.soundPresetSelect.value = settings.sound_preset || 'default';
+            elements.soundCustomUrlInput.value = settings.sound_custom_url || '';
+            elements.soundCustomUrlInput.style.display = (settings.sound_preset === 'custom') ? 'block' : 'none';
+        }
+        if (elements.fontFamilySelect) {
+            elements.fontFamilySelect.value = settings.font_family || 'Inter';
+        }
+        if (elements.titleColorInput) {
+            elements.titleColorInput.value = settings.title_color || '#FFFFFF';
+        }
+        if (elements.highlightColorInput) {
+            elements.highlightColorInput.value = settings.highlight_color || '#F14635';
+        }
+        if (elements.messageColorInput) {
+            elements.messageColorInput.value = settings.message_color || '#A0AEC0';
         }
     }
     
-    // НОВАЯ ФУНКЦИЯ для переключения полей ввода URL
-    function toggleCustomUrlInputs() {
-        if (elements.alertPresetSelect.value === 'custom') {
-            elements.alertCustomUrlInput.style.display = 'block';
-        } else {
-            elements.alertCustomUrlInput.style.display = 'none';
-        }
-        
-        if (elements.soundPresetSelect.value === 'custom') {
-            elements.soundCustomUrlInput.style.display = 'block';
-        } else {
-            elements.soundCustomUrlInput.style.display = 'none';
+    function updateStats() {
+        const stats = currentData.stats || {};
+        if (stats) {
+            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total.count || 0} донатов`;
         }
     }
-
 
     // --- Глобальные функции для кнопок ---
     window.replayDonation = async function(donationId) {
@@ -310,37 +332,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     tts_enabled: elements.ttsEnabledInput.checked,
                     tts_volume: parseFloat(elements.ttsVolumeInput.value)
                 };
-                const result = await fetchApi('/update_settings', 'POST', data);
+                const result = await fetchApi('/api/update_settings', 'POST', data);
                 if (result && result.status === 'success') {
                     logToConsole(`⚙️ Настройки обновлены`, 'info');
                 }
             });
         }
         
-        // НОВОЕ: Обработчик для формы кастомизации виджетов
         if (elements.widgetCustomizationForm) {
             elements.widgetCustomizationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const data = {
-                    alert_preset: elements.alertPresetSelect.value,
-                    sound_preset: elements.soundPresetSelect.value,
-                    alert_custom_url: elements.alertCustomUrlInput.value || null,
-                    sound_custom_url: elements.soundCustomUrlInput.value || null
-                };
-                const result = await fetchApi('/update_widget_settings', 'POST', data);
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData.entries());
+                
+                const result = await fetchApi('/api/update_widget_settings', 'POST', data);
                 if (result && result.status === 'success') {
-                    logToConsole(`🎨 Настройки виджетов обновлены`, 'info');
+                    logToConsole(`🎨 Настройки виджета обновлены`, 'info');
                 }
             });
-            
-            elements.alertPresetSelect.addEventListener('change', toggleCustomUrlInputs);
-            elements.soundPresetSelect.addEventListener('change', toggleCustomUrlInputs);
         }
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
                 if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
-                    const result = await fetchApi('/reset_donations', 'POST');
+                    const result = await fetchApi('/api/reset_donations', 'POST');
                     if (result && result.status === 'success') {
                         logToConsole(`🗑️ История донатов сброшена`, 'warning');
                     }
@@ -350,9 +365,30 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.testDonationBtn) {
             elements.testDonationBtn.addEventListener('click', async () => {
-                const result = await fetchApi('/test_donation', 'POST');
+                const result = await fetchApi('/api/test_donation', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole('🧪 Тестовый донат отправлен', 'info');
+                }
+            });
+        }
+        
+        // Логика для отображения/скрытия полей кастомных URL
+        if (elements.alertPresetSelect) {
+            elements.alertPresetSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'custom') {
+                    elements.alertCustomUrlInput.style.display = 'block';
+                } else {
+                    elements.alertCustomUrlInput.style.display = 'none';
+                }
+            });
+        }
+        
+        if (elements.soundPresetSelect) {
+            elements.soundPresetSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'custom') {
+                    elements.soundCustomUrlInput.style.display = 'block';
+                } else {
+                    elements.soundCustomUrlInput.style.display = 'none';
                 }
             });
         }
@@ -360,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Загрузка данных ---
     async function loadData() {
-        const data = await fetchApi('/get_all_data');
+        const data = await fetchApi('/api/get_all_data');
         if (data) {
             currentData = data;
             renderAll();
