@@ -90,9 +90,10 @@
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
         
-        // Используем относительные пути, чтобы они работали везде
-        const GIF_URL = '/static/media/alert.gif'; 
-        const SOUND_URL = '/static/media/alert.mp3';
+        // НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ URL
+        let GIF_URL = '/static/media/alert.gif'; 
+        let SOUND_URL = '/static/media/alert.mp3';
+        
         const ALERT_DURATION = 8000;
 
         function connectWebSocket() {
@@ -117,6 +118,11 @@
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
+                    
+                    // НОВОЕ: Обновляем URL-ы на основе полученных настроек
+                    if(currentSettings.alert_url) GIF_URL = currentSettings.alert_url;
+                    if(currentSettings.sound_url) SOUND_URL = currentSettings.sound_url;
+                    
                     const latestDonation = message.data.donations?.[0];
                     // ИСПРАВЛЕНИЕ: Проверяем, что донат новый, и добавляем в очередь
                     if (latestDonation && latestDonation.id !== lastShownAlertId) {
@@ -164,7 +170,7 @@
             const messageText = data.message ? escapeHtml(data.message) : '';
             alertContainer.innerHTML = `
                 <div class="alert-box">
-                    <img src="${GIF_URL}" class="alert-gif" alt="Donation animation">
+                    <img src="${GIF_URL}" class="alert-gif" onerror="this.onerror=null;this.src='/static/media/alert.gif';" alt="Donation animation">
                     <div class="alert-content">
                         <p class="alert-main-text">
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
@@ -204,9 +210,14 @@
             if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-
+        
+        // НОВЫЙ код, чтобы избежать ошибки с undefined settings
         connectWebSocket();
+        fetch('/api/get_all_data').then(response => response.json()).then(data => {
+            currentSettings = data.settings || {};
+            if(currentSettings.alert_url) GIF_URL = currentSettings.alert_url;
+            if(currentSettings.sound_url) SOUND_URL = currentSettings.sound_url;
+        });
     </script>
 </body>
 </html>
-
