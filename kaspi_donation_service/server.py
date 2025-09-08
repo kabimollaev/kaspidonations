@@ -294,6 +294,21 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# ВРЕМЕННЫЙ МАРШРУТ ДЛЯ УДАЛЕНИЯ АДМИНА
+@app.route('/delete_admin_by_id')
+def delete_admin_by_id():
+    # Находим пользователя с ролью 'admin'
+    admin_user = User.query.filter_by(role='admin').first()
+    if admin_user:
+        # Удаляем пользователя и все связанные с ним данные
+        db.session.delete(admin_user)
+        db.session.commit()
+        flash(f'Администратор "{admin_user.username}" успешно удален.', 'success')
+    else:
+        flash('Аккаунт администратора не найден.', 'error')
+    return redirect(url_for('register'))
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
