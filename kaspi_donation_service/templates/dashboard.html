@@ -18,6 +18,12 @@
                 <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
             </div>
         </header>
+        
+        {% if trial_info %}
+        <div class="alert-section">
+            <p>{{ trial_info }}</p>
+        </div>
+        {% endif %}
 
         <div class="api-key-section">
             <h3>Ваш персональный API ключ</h3>
@@ -157,4 +163,3 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
-
