@@ -185,8 +185,8 @@ def get_full_update_message(user_id):
             'sound_preset': settings.sound_preset,
             'alert_custom_url': settings.alert_custom_url,
             'sound_custom_url': settings.sound_custom_url,
-            'alert_url': ALERT_PRESETS[settings.alert_preset]['url'] if settings.alert_preset else settings.alert_custom_url,
-            'sound_url': SOUND_PRESETS[settings.sound_preset]['url'] if settings.sound_preset else settings.sound_custom_url,
+            'alert_url': ALERT_PRESETS[settings.alert_preset]['url'] if settings.alert_preset != 'custom' else settings.alert_custom_url,
+            'sound_url': SOUND_PRESETS[settings.sound_preset]['url'] if settings.sound_preset != 'custom' else settings.sound_custom_url,
         } if settings else {}
         phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
 
@@ -308,7 +308,7 @@ def dashboard():
     stats = get_donation_stats(current_user.id)
     donations_history = Donation.query.filter_by(user_id=current_user.id).order_by(Donation.timestamp.desc()).limit(10).all()
     
-    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, donations_history=donations_history)
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, donations_history=donations_history, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
 
 @app.route('/admin')
 @login_required
