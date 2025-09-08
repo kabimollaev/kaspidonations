@@ -8,3 +8,4 @@ gtts
 requests
 gevent
 greenlet
+psycopg2-binary
