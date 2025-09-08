@@ -27,7 +27,7 @@
 
         <div class="api-key-section">
             <h3>Ваш персональный API ключ</h3>
-            <input type="text" value="{{ user.api_key }}" readonly>
+            <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
             <p>Этот ключ понадобится для настройки приложения на вашем ПК.</p>
         </div>
 
@@ -149,7 +149,7 @@
                                 {% endfor %}
                                 <option value="custom" {% if user.settings.alert_preset not in ALERT_PRESETS %}selected{% endif %}>Своя GIF-анимация</option>
                             </select>
-                            <input type="url" id="alert-custom-url" name="alert-custom-url" placeholder="URL вашей GIF-анимации" value="{{ user.settings.alert_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.alert_preset in ALERT_PRESETS %}display: none;{% endif %}">
+                            <input type="url" id="alert-custom-url" name="alert-custom-url" placeholder="URL вашей GIF-анимации" value="{{ user.settings.alert_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.alert_preset != 'custom' %}display: none;{% endif %}">
                         </div>
                         <div class="form-group">
                             <label for="sound-preset">Пресет звука</label>
@@ -159,7 +159,7 @@
                                 {% endfor %}
                                 <option value="custom" {% if user.settings.sound_preset not in SOUND_PRESETS %}selected{% endif %}>Свой звук</option>
                             </select>
-                            <input type="url" id="sound-custom-url" name="sound-custom-url" placeholder="URL вашего звука (.mp3)" value="{{ user.settings.sound_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.sound_preset in SOUND_PRESETS %}display: none;{% endif %}">
+                            <input type="url" id="sound-custom-url" name="sound-custom-url" placeholder="URL вашего звука (.mp3)" value="{{ user.settings.sound_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.sound_preset != 'custom' %}display: none;{% endif %}">
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Сохранить виджеты</button>
