@@ -427,14 +427,23 @@ def update_widget_settings():
     
     settings = user.settings or Settings(user_id=user.id)
     
-    settings.alert_preset = data.get('alert_preset')
-    settings.sound_preset = data.get('sound_preset')
+    # ИСПРАВЛЕНИЕ: Проверяем каждое значение перед обновлением, чтобы избежать сохранения None
+    if data.get('alert_preset') is not None:
+        settings.alert_preset = data.get('alert_preset')
+    if data.get('sound_preset') is not None:
+        settings.sound_preset = data.get('sound_preset')
+    
     settings.alert_custom_url = data.get('alert_custom_url')
     settings.sound_custom_url = data.get('sound_custom_url')
-    settings.font_family = data.get('font_family')
-    settings.title_color = data.get('title_color')
-    settings.highlight_color = data.get('highlight_color')
-    settings.message_color = data.get('message_color')
+    
+    if data.get('font_family') is not None:
+        settings.font_family = data.get('font_family')
+    if data.get('title_color') is not None:
+        settings.title_color = data.get('title_color')
+    if data.get('highlight_color') is not None:
+        settings.highlight_color = data.get('highlight_color')
+    if data.get('message_color') is not None:
+        settings.message_color = data.get('message_color')
     
     if not user.settings:
         db.session.add(settings)
@@ -655,3 +664,4 @@ if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
         db.create_all() # Создает все таблицы, если их нет
+
