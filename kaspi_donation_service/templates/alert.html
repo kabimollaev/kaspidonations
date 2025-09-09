@@ -166,12 +166,15 @@
             console.log('Показываем алерт для:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const alertUrl = currentSettings.alert_url;
-            const soundUrl = currentSettings.sound_url;
+            // ИСПРАВЛЕНИЕ: Получаем URL напрямую из данных алерта
+            const alertUrl = data.alert_url;
+            const soundUrl = data.sound_url;
+            // ИСПРАВЛЕНИЕ: Добавляем кэш-бастер, чтобы всегда загружать актуальные файлы
+            const cacheBuster = `?v=${new Date().getTime()}`;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
-                    <img src="${alertUrl}" class="alert-gif" onerror="this.src='/static/media/alert.gif'" alt="Donation animation">
+                    <img src="${alertUrl}${cacheBuster}" class="alert-gif" onerror="this.src='/static/media/alert.gif'" alt="Donation animation">
                     <div class="alert-content">
                         <p class="alert-main-text">
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
@@ -182,7 +185,7 @@
             const alertBox = alertContainer.querySelector('.alert-box');
             
             try {
-                donationSound.src = soundUrl;
+                donationSound.src = `${soundUrl}${cacheBuster}`;
                 donationSound.volume = currentSettings.tts_volume || 0.7;
                 donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
             } catch (e) {
@@ -223,3 +226,4 @@
     </script>
 </body>
 </html>
+
