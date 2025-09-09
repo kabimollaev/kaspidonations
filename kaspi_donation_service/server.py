@@ -190,8 +190,8 @@ def get_full_update_message(user_id):
             'sound_preset': settings.sound_preset,
             'alert_custom_url': settings.alert_custom_url,
             'sound_custom_url': settings.sound_custom_url,
-            'alert_url': ALERT_PRESETS[settings.alert_preset]['url'] if settings.alert_preset != 'custom' else settings.alert_custom_url,
-            'sound_url': SOUND_PRESETS[settings.sound_preset]['url'] if settings.sound_preset != 'custom' else settings.sound_custom_url,
+            'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
+            'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url,
             # НОВЫЕ ПОЛЯ
             'font_family': settings.font_family,
             'title_color': settings.title_color,
@@ -411,7 +411,14 @@ def submit_donation():
     db.session.add(new_donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
+    donation_data = {
+        'id': new_donation.id, 
+        'name': new_donation.name, 
+        'amount': new_donation.amount, 
+        'message': new_donation.message,
+        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
+        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
+    }
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
@@ -487,7 +494,14 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    donation_data = {
+        'id': donation.id, 
+        'name': donation.name, 
+        'amount': donation.amount, 
+        'message': donation.message,
+        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
+        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
+    }
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
@@ -525,7 +539,14 @@ def replay_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Донат не найден'}), 404
-    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    donation_data = {
+        'id': donation.id, 
+        'name': donation.name, 
+        'amount': donation.amount, 
+        'message': donation.message,
+        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
+        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
+    }
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
@@ -536,7 +557,15 @@ def replay_donation(donation_id):
 @api_login_required
 def test_donation_api():
     user = g.user
-    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
+    settings = user.settings
+    test_donation_data = {
+        'id': f"test_{int(time.time())}",
+        'name': 'Тестер',
+        'amount': 100,
+        'message': 'Это тестовый донат!',
+        'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
+        'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url
+    }
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     if user.settings.tts_enabled:
         tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
@@ -664,4 +693,5 @@ if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
         db.create_all() # Создает все таблицы, если их нет
+
 
