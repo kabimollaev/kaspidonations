@@ -99,7 +99,6 @@
         const alertContainer = document.getElementById('alert-container');
         const ALERT_DURATION = 8000;
         
-        // Объекты для предзагрузки гифки и звука
         const imagePreloader = new Image();
         const audioPreloader = new Audio();
 
@@ -122,16 +121,14 @@
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
                     
-                    // Запускаем предзагрузку гифки и звука в фоне при получении настроек
                     if (currentSettings.alert_url) {
                         imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
                     }
                     if (currentSettings.sound_url) {
                         audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
-                        audioPreloader.load(); // Команда браузеру начать загрузку аудио
+                        audioPreloader.load();
                     }
                 }
-                // Вся логика TTS удалена
             };
             
             ws.onclose = () => setTimeout(connectWebSocket, 3000);
@@ -143,7 +140,6 @@
             isShowingAlert = true;
             const data = alertQueue.shift();
             
-            // Пропускаем дубликаты
             if (data.id === lastShownAlertId && !String(data.id).startsWith('test_')) {
                 isShowingAlert = false;
                 processQueue();
@@ -156,8 +152,6 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            
-            // Используем уже предзагруженные ресурсы для мгновенного отображения
             const alertUrl = imagePreloader.src; 
 
             alertContainer.innerHTML = `
@@ -172,13 +166,19 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // **ИСПРАВЛЕНИЕ:** Воспроизводим ПРЕДЗАГРУЖЕННЫЙ звук
+            // Воспроизводим предзагруженный звук
             audioPreloader.volume = currentSettings.tts_volume || 0.7;
-            audioPreloader.currentTime = 0; // Сбрасываем на начало, если звук не доиграл
-            audioPreloader.play().catch(e => console.error("Donation sound play failed:", e));
+            audioPreloader.currentTime = 0;
+            const playPromise = audioPreloader.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.error("Audio play was prevented:", error);
+                    console.log("Please check OBS Audio Settings for the Browser Source.");
+                });
+            }
 
             // Показываем визуальное оповещение
-            setTimeout(() => alertBox.classList.add('visible'), 100);
+            setTimeout(() => alertBox.classList.add('visible'), 50); // Уменьшаем задержку для более быстрого появления
 
             // Устанавливаем таймер на скрытие оповещения
             setTimeout(hideAlert, ALERT_DURATION);
@@ -189,12 +189,12 @@
             if (alertBox) {
                 alertBox.classList.remove('visible');
                 setTimeout(() => {
-                    if (isShowingAlert) { // Убедимся, что новый алерт не появился за время анимации
+                    if (isShowingAlert) {
                          alertContainer.innerHTML = '';
                          isShowingAlert = false;
                          processQueue();
                     }
-                }, 1000); // Ждем завершения анимации исчезновения
+                }, 500); // Уменьшаем время ожидания после исчезновения
             } else {
                 isShowingAlert = false;
                 processQueue();
