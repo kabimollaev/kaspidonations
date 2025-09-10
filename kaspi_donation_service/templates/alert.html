@@ -85,6 +85,14 @@
             color: var(--message-color);
             word-break: break-word; 
         }
+        /* Стили для статуса TTS */
+        .tts-status {
+            font-size: 0.9rem;
+            color: var(--message-color);
+            margin-top: 12px;
+            font-style: italic;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
@@ -96,10 +104,12 @@
         let isShowingAlert = false;
         let currentSettings = {};
         let lastShownAlertId = null;
+        let alertHideTimeout = null;
+
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
-        const ALERT_DURATION = 8000;
-        // Создаем объекты для предзагрузки
+        const ALERT_DURATION = 8000; // Стандартная длительность, если нет TTS
+        
         const imagePreloader = new Image();
         const audioPreloader = new Audio();
 
@@ -110,15 +120,12 @@
             
             ws = new WebSocket(wsUrl);
             
-            ws.onopen = () => {
-                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение установлено.`);
-            };
+            ws.onopen = () => console.log("WebSocket connected.");
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
                 if (message.type === 'show_alert') {
-                    console.log('Получена команда show_alert:', message.data);
                     alertQueue.push(message.data);
                     processQueue();
                 } else if (message.type === 'tts') {
@@ -126,37 +133,13 @@
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
-                    
-                    // Запускаем предзагрузку гифки и звука в фоне
-                    if (currentSettings.alert_url) {
-                        imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
-                    }
-                    if (currentSettings.sound_url) {
-                        audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
-                    }
-
-                    const latestDonation = message.data.donations?.[0];
-                    if (latestDonation && latestDonation.id !== lastShownAlertId) {
-                         const now = Date.now();
-                         const donationTime = new Date(latestDonation.timestamp).getTime();
-                         if ((now - donationTime) < 30000) {
-                            console.log('Обнаружен новый донат в full_update:', latestDonation);
-                            alertQueue.push(latestDonation);
-                            processQueue();
-                         }
-                    }
+                    if (currentSettings.alert_url) imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
+                    if (currentSettings.sound_url) audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
                 }
             };
             
-            ws.onclose = (event) => {
-                console.log(`[${new Date().toLocaleTimeString()}] WebSocket соединение закрыто. Код: ${event.code}. Попытка переподключения...`);
-                setTimeout(connectWebSocket, 3000);
-            };
-
-            ws.onerror = (error) => {
-                console.error('WebSocket ошибка:', error);
-                ws.close();
-            };
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+            ws.onerror = (error) => ws.close();
         }
 
         function processQueue() {
@@ -164,8 +147,7 @@
             isShowingAlert = true;
             const data = alertQueue.shift();
             
-            if (data.id === lastShownAlertId) {
-                console.log('Пропускаем дублирующийся алерт:', data.id);
+            if (data.id === lastShownAlertId && !String(data.id).startsWith('test_')) {
                 isShowingAlert = false;
                 processQueue();
                 return;
@@ -175,12 +157,12 @@
         }
 
         function showAlert(data) {
-            console.log('Показываем алерт для:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             const alertUrl = data.alert_url;
             const soundUrl = data.sound_url;
             const cacheBuster = `?v=${new Date().getTime()}`;
+            const isTTSExpected = currentSettings.tts_enabled && data.amount >= (currentSettings.min_amount || 0) && data.message;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -190,6 +172,7 @@
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
                         </p>
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
+                        ${isTTSExpected ? '<p class="tts-status">🎙️ Озвучка генерируется...</p>' : ''}
                     </div>
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
@@ -197,27 +180,54 @@
             try {
                 donationSound.src = `${soundUrl}${cacheBuster}`;
                 donationSound.volume = currentSettings.tts_volume || 0.7;
-                donationSound.play().catch(e => console.error("Не удалось воспроизвести звук оповещения.", e));
+                donationSound.play().catch(e => console.error("Sound play failed", e));
             } catch (e) {
-                console.warn(`Не удалось загрузить звук ${soundUrl}.`);
+                console.warn(`Could not load sound ${soundUrl}.`);
             }
             
+            if (alertHideTimeout) clearTimeout(alertHideTimeout);
+
             setTimeout(() => alertBox.classList.add('visible'), 100);
-            setTimeout(() => alertBox.classList.remove('visible'), ALERT_DURATION);
+
+            if (isTTSExpected) {
+                // Устанавливаем долгий таймаут на случай, если TTS не придет
+                alertHideTimeout = setTimeout(hideAlert, 65000); 
+            } else {
+                // Если TTS не ожидается, скрываем через стандартное время
+                alertHideTimeout = setTimeout(hideAlert, ALERT_DURATION);
+            }
+        }
+        
+        function playTTS(url, volume) {
+            const ttsAudio = new Audio(url);
+            ttsAudio.volume = volume;
             
-            setTimeout(() => {
-                alertContainer.innerHTML = '';
-                isShowingAlert = false;
-                processQueue();
-            }, ALERT_DURATION + 1000);
+            const statusEl = document.querySelector('.tts-status');
+            if (statusEl) statusEl.textContent = '▶️ Воспроизводим...';
+
+            ttsAudio.play().catch(e => console.error("TTS play failed.", e));
+            
+            // Как только озвучка закончится, скрываем алерт
+            ttsAudio.onended = hideAlert;
+            ttsAudio.onerror = hideAlert; // Скрываем, даже если ошибка
         }
 
-        function playTTS(url, volume) {
-            setTimeout(() => {
-                const ttsAudio = new Audio(url);
-                ttsAudio.volume = volume;
-                ttsAudio.play().catch(e => console.error("Не удалось воспроизвести озвучку.", e));
-            }, 1000);
+        function hideAlert() {
+            if (alertHideTimeout) clearTimeout(alertHideTimeout);
+            alertHideTimeout = null;
+
+            const alertBox = alertContainer.querySelector('.alert-box');
+            if (alertBox) {
+                alertBox.classList.remove('visible');
+                setTimeout(() => {
+                    alertContainer.innerHTML = '';
+                    isShowingAlert = false;
+                    processQueue();
+                }, 1000); // Ждем завершения анимации исчезновения
+            } else {
+                isShowingAlert = false;
+                processQueue();
+            }
         }
 
         function escapeHtml(unsafe) {
