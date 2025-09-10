@@ -99,6 +99,9 @@
         const alertContainer = document.getElementById('alert-container');
         const donationSound = document.getElementById('donation-sound');
         const ALERT_DURATION = 8000;
+        // Создаем объекты для предзагрузки
+        const imagePreloader = new Image();
+        const audioPreloader = new Audio();
 
         function connectWebSocket() {
             const userId = "{{ user_id }}";
@@ -123,6 +126,15 @@
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
+                    
+                    // Запускаем предзагрузку гифки и звука в фоне
+                    if (currentSettings.alert_url) {
+                        imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
+                    }
+                    if (currentSettings.sound_url) {
+                        audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
+                    }
+
                     const latestDonation = message.data.donations?.[0];
                     if (latestDonation && latestDonation.id !== lastShownAlertId) {
                          const now = Date.now();
@@ -166,10 +178,8 @@
             console.log('Показываем алерт для:', data);
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            // ИСПРАВЛЕНИЕ: Получаем URL напрямую из данных алерта
             const alertUrl = data.alert_url;
             const soundUrl = data.sound_url;
-            // ИСПРАВЛЕНИЕ: Добавляем кэш-бастер, чтобы всегда загружать актуальные файлы
             const cacheBuster = `?v=${new Date().getTime()}`;
 
             alertContainer.innerHTML = `
