@@ -159,7 +159,6 @@
             
             // Используем уже предзагруженные ресурсы для мгновенного отображения
             const alertUrl = imagePreloader.src; 
-            const soundUrl = audioPreloader.src;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -173,10 +172,10 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим звук поступления доната
-            const donationSound = new Audio(soundUrl);
-            donationSound.volume = currentSettings.tts_volume || 0.7;
-            donationSound.play().catch(e => console.error("Donation sound play failed:", e));
+            // **ИСПРАВЛЕНИЕ:** Воспроизводим ПРЕДЗАГРУЖЕННЫЙ звук
+            audioPreloader.volume = currentSettings.tts_volume || 0.7;
+            audioPreloader.currentTime = 0; // Сбрасываем на начало, если звук не доиграл
+            audioPreloader.play().catch(e => console.error("Donation sound play failed:", e));
 
             // Показываем визуальное оповещение
             setTimeout(() => alertBox.classList.add('visible'), 100);
