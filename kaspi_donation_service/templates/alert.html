@@ -85,30 +85,19 @@
             color: var(--message-color);
             word-break: break-word; 
         }
-        /* Стили для статуса TTS */
-        .tts-status {
-            font-size: 0.9rem;
-            color: var(--message-color);
-            margin-top: 12px;
-            font-style: italic;
-            opacity: 0.8;
-        }
     </style>
 </head>
 <body>
     <div id="alert-container" class="alert-container"></div>
-    <audio id="donation-sound"></audio>
     <script>
         let ws;
         let alertQueue = [];
         let isShowingAlert = false;
         let currentSettings = {};
         let lastShownAlertId = null;
-        let alertHideTimeout = null;
 
         const alertContainer = document.getElementById('alert-container');
-        const donationSound = document.getElementById('donation-sound');
-        const ALERT_DURATION = 8000; // Стандартная длительность, если нет TTS
+        const ALERT_DURATION = 8000;
         
         const imagePreloader = new Image();
         const audioPreloader = new Audio();
@@ -129,17 +118,17 @@
                     alertQueue.push(message.data);
                     processQueue();
                 } else if (message.type === 'tts') {
+                    // Просто воспроизводим TTS, когда он готов
                     playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
-                    // ИЗМЕНЕНИЕ: Используем cache buster для предзагрузки
                     if (currentSettings.alert_url) {
                         imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
                     }
                     if (currentSettings.sound_url) {
                         audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
-                        audioPreloader.load(); // Начинаем загрузку аудио
+                        audioPreloader.load();
                     }
                 }
             };
@@ -165,11 +154,9 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const isTTSExpected = currentSettings.tts_enabled && data.amount >= (currentSettings.min_amount || 0) && data.message;
             
-            // ИЗМЕНЕНИЕ: Используем предзагруженные ресурсы
-            const alertUrl = imagePreloader.src || data.alert_url;
-            const soundUrl = audioPreloader.src || data.sound_url;
+            const alertUrl = imagePreloader.src || `${data.alert_url}?v=${new Date().getTime()}`;
+            const soundUrl = audioPreloader.src || `${data.sound_url}?v=${new Date().getTime()}`;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -179,51 +166,34 @@
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
                         </p>
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
-                        ${isTTSExpected ? '<p class="tts-status">🎙️ Озвучка генерируется...</p>' : ''}
                     </div>
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            try {
-                donationSound.src = soundUrl;
-                donationSound.volume = currentSettings.tts_volume || 0.7;
-                donationSound.play().catch(e => console.error("Sound play failed", e));
-            } catch (e) {
-                console.warn(`Could not load sound ${soundUrl}.`);
-            }
-            
-            if (alertHideTimeout) clearTimeout(alertHideTimeout);
+            // Воспроизводим звук поступления доната
+            const donationSound = new Audio(soundUrl);
+            donationSound.volume = currentSettings.tts_volume || 0.7;
+            donationSound.play().catch(e => console.error("Donation sound play failed", e));
 
+            // Показываем визуальное оповещение
             setTimeout(() => alertBox.classList.add('visible'), 100);
 
-            if (isTTSExpected) {
-                alertHideTimeout = setTimeout(hideAlert, 65000); 
-            } else {
-                alertHideTimeout = setTimeout(hideAlert, ALERT_DURATION);
-            }
+            // Устанавливаем таймер на скрытие визуального оповещения
+            setTimeout(hideAlert, ALERT_DURATION);
         }
         
         function playTTS(url, volume) {
             const ttsAudio = new Audio(url);
             ttsAudio.volume = volume;
-            
-            const statusEl = document.querySelector('.tts-status');
-            if (statusEl) statusEl.textContent = '▶️ Воспроизводим...';
-
             ttsAudio.play().catch(e => console.error("TTS play failed.", e));
-            
-            ttsAudio.onended = hideAlert;
-            ttsAudio.onerror = hideAlert;
         }
 
         function hideAlert() {
-            if (alertHideTimeout) clearTimeout(alertHideTimeout);
-            alertHideTimeout = null;
-
             const alertBox = alertContainer.querySelector('.alert-box');
             if (alertBox) {
                 alertBox.classList.remove('visible');
                 setTimeout(() => {
+                    if (!isShowingAlert) return; // Убедимся, что новый алерт не появился
                     alertContainer.innerHTML = '';
                     isShowingAlert = false;
                     processQueue();
