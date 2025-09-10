@@ -99,6 +99,7 @@
         const alertContainer = document.getElementById('alert-container');
         const ALERT_DURATION = 8000;
         
+        // Объекты для предзагрузки гифки и звука
         const imagePreloader = new Image();
         const audioPreloader = new Audio();
 
@@ -109,7 +110,7 @@
             
             ws = new WebSocket(wsUrl);
             
-            ws.onopen = () => console.log("WebSocket connected.");
+            ws.onopen = () => console.log("WebSocket connected. Ready for alerts.");
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
@@ -117,20 +118,20 @@
                 if (message.type === 'show_alert') {
                     alertQueue.push(message.data);
                     processQueue();
-                } else if (message.type === 'tts') {
-                    // Просто воспроизводим TTS, когда он готов
-                    playTTS(message.url, currentSettings.tts_volume || 0.7);
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
+                    
+                    // Запускаем предзагрузку гифки и звука в фоне при получении настроек
                     if (currentSettings.alert_url) {
                         imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
                     }
                     if (currentSettings.sound_url) {
                         audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
-                        audioPreloader.load();
+                        audioPreloader.load(); // Команда браузеру начать загрузку аудио
                     }
                 }
+                // Вся логика TTS удалена
             };
             
             ws.onclose = () => setTimeout(connectWebSocket, 3000);
@@ -142,6 +143,7 @@
             isShowingAlert = true;
             const data = alertQueue.shift();
             
+            // Пропускаем дубликаты
             if (data.id === lastShownAlertId && !String(data.id).startsWith('test_')) {
                 isShowingAlert = false;
                 processQueue();
@@ -155,8 +157,9 @@
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             
-            const alertUrl = imagePreloader.src || `${data.alert_url}?v=${new Date().getTime()}`;
-            const soundUrl = audioPreloader.src || `${data.sound_url}?v=${new Date().getTime()}`;
+            // Используем уже предзагруженные ресурсы для мгновенного отображения
+            const alertUrl = imagePreloader.src; 
+            const soundUrl = audioPreloader.src;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -173,31 +176,26 @@
             // Воспроизводим звук поступления доната
             const donationSound = new Audio(soundUrl);
             donationSound.volume = currentSettings.tts_volume || 0.7;
-            donationSound.play().catch(e => console.error("Donation sound play failed", e));
+            donationSound.play().catch(e => console.error("Donation sound play failed:", e));
 
             // Показываем визуальное оповещение
             setTimeout(() => alertBox.classList.add('visible'), 100);
 
-            // Устанавливаем таймер на скрытие визуального оповещения
+            // Устанавливаем таймер на скрытие оповещения
             setTimeout(hideAlert, ALERT_DURATION);
         }
         
-        function playTTS(url, volume) {
-            const ttsAudio = new Audio(url);
-            ttsAudio.volume = volume;
-            ttsAudio.play().catch(e => console.error("TTS play failed.", e));
-        }
-
         function hideAlert() {
             const alertBox = alertContainer.querySelector('.alert-box');
             if (alertBox) {
                 alertBox.classList.remove('visible');
                 setTimeout(() => {
-                    if (!isShowingAlert) return; // Убедимся, что новый алерт не появился
-                    alertContainer.innerHTML = '';
-                    isShowingAlert = false;
-                    processQueue();
-                }, 1000);
+                    if (isShowingAlert) { // Убедимся, что новый алерт не появился за время анимации
+                         alertContainer.innerHTML = '';
+                         isShowingAlert = false;
+                         processQueue();
+                    }
+                }, 1000); // Ждем завершения анимации исчезновения
             } else {
                 isShowingAlert = false;
                 processQueue();
