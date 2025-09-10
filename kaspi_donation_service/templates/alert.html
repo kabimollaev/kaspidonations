@@ -133,8 +133,14 @@
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
                     applyCustomizations(currentSettings);
-                    if (currentSettings.alert_url) imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
-                    if (currentSettings.sound_url) audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
+                    // ИЗМЕНЕНИЕ: Используем cache buster для предзагрузки
+                    if (currentSettings.alert_url) {
+                        imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
+                    }
+                    if (currentSettings.sound_url) {
+                        audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
+                        audioPreloader.load(); // Начинаем загрузку аудио
+                    }
                 }
             };
             
@@ -159,14 +165,15 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const alertUrl = data.alert_url;
-            const soundUrl = data.sound_url;
-            const cacheBuster = `?v=${new Date().getTime()}`;
             const isTTSExpected = currentSettings.tts_enabled && data.amount >= (currentSettings.min_amount || 0) && data.message;
+            
+            // ИЗМЕНЕНИЕ: Используем предзагруженные ресурсы
+            const alertUrl = imagePreloader.src || data.alert_url;
+            const soundUrl = audioPreloader.src || data.sound_url;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
-                    <img src="${alertUrl}${cacheBuster}" class="alert-gif" onerror="this.src='/static/media/alert.gif'" alt="Donation animation">
+                    <img src="${alertUrl}" class="alert-gif" onerror="this.src='/static/media/alert.gif'" alt="Donation animation">
                     <div class="alert-content">
                         <p class="alert-main-text">
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
@@ -178,7 +185,7 @@
             const alertBox = alertContainer.querySelector('.alert-box');
             
             try {
-                donationSound.src = `${soundUrl}${cacheBuster}`;
+                donationSound.src = soundUrl;
                 donationSound.volume = currentSettings.tts_volume || 0.7;
                 donationSound.play().catch(e => console.error("Sound play failed", e));
             } catch (e) {
@@ -190,10 +197,8 @@
             setTimeout(() => alertBox.classList.add('visible'), 100);
 
             if (isTTSExpected) {
-                // Устанавливаем долгий таймаут на случай, если TTS не придет
                 alertHideTimeout = setTimeout(hideAlert, 65000); 
             } else {
-                // Если TTS не ожидается, скрываем через стандартное время
                 alertHideTimeout = setTimeout(hideAlert, ALERT_DURATION);
             }
         }
@@ -207,9 +212,8 @@
 
             ttsAudio.play().catch(e => console.error("TTS play failed.", e));
             
-            // Как только озвучка закончится, скрываем алерт
             ttsAudio.onended = hideAlert;
-            ttsAudio.onerror = hideAlert; // Скрываем, даже если ошибка
+            ttsAudio.onerror = hideAlert;
         }
 
         function hideAlert() {
@@ -223,7 +227,7 @@
                     alertContainer.innerHTML = '';
                     isShowingAlert = false;
                     processQueue();
-                }, 1000); // Ждем завершения анимации исчезновения
+                }, 1000);
             } else {
                 isShowingAlert = false;
                 processQueue();
