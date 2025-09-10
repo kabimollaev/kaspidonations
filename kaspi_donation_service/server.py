@@ -411,18 +411,11 @@ def submit_donation():
     db.session.add(new_donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {
-        'id': new_donation.id, 
-        'name': new_donation.name, 
-        'amount': new_donation.amount, 
-        'message': new_donation.message,
-        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
-        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
-    }
+    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        gevent.spawn(tts_task, tts_message, user.id)
+    # if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+    #     tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+    #     gevent.spawn(tts_task, tts_message, user.id)
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -449,8 +442,8 @@ def update_widget_settings():
         settings.title_color = data.get('title_color')
     if data.get('highlight_color') is not None:
         settings.highlight_color = data.get('highlight_color')
-    if data.get('message_color') is not None:
-        settings.message_color = data.get('message_color')
+    if 'message_color' in data and data['message_color']:
+        settings.message_color = data['message_color']
     
     if not user.settings:
         db.session.add(settings)
@@ -494,18 +487,11 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {
-        'id': donation.id, 
-        'name': donation.name, 
-        'amount': donation.amount, 
-        'message': donation.message,
-        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
-        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
-    }
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        gevent.spawn(tts_task, tts_message, user.id)
+    # if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+    #     tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+    #     gevent.spawn(tts_task, tts_message, user.id)
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -539,37 +525,22 @@ def replay_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Донат не найден'}), 404
-    donation_data = {
-        'id': donation.id, 
-        'name': donation.name, 
-        'amount': donation.amount, 
-        'message': donation.message,
-        'alert_url': ALERT_PRESETS.get(user.settings.alert_preset, {}).get('url') if user.settings.alert_preset != 'custom' else user.settings.alert_custom_url,
-        'sound_url': SOUND_PRESETS.get(user.settings.sound_preset, {}).get('url') if user.settings.sound_preset != 'custom' else user.settings.sound_custom_url
-    }
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled:
-        tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        gevent.spawn(tts_task, tts_message, user.id)
+    # if user.settings.tts_enabled:
+    #     tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
+    #     gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
 @api_login_required
 def test_donation_api():
     user = g.user
-    settings = user.settings
-    test_donation_data = {
-        'id': f"test_{int(time.time())}",
-        'name': 'Тестер',
-        'amount': 100,
-        'message': 'Это тестовый донат!',
-        'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
-        'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url
-    }
+    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
-    if user.settings.tts_enabled:
-        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
-        gevent.spawn(tts_task, tts_message, user.id)
+    # if user.settings.tts_enabled:
+    #     tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
+    #     gevent.spawn(tts_task, tts_message, user.id)
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status', methods=['GET'])
@@ -693,5 +664,4 @@ if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
         db.create_all() # Создает все таблицы, если их нет
-
 
