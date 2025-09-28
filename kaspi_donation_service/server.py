@@ -296,6 +296,19 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ 500: Проверяем и создаем связанные записи ---
+    with app.app_context():
+        user = db.session.get(User, current_user.id)
+        if not user.goal:
+            db.session.add(Goal(user_id=user.id))
+            db.session.commit()
+            print(f"✅ Создана запись Goal для пользователя {user.username}")
+        if not user.settings:
+            db.session.add(Settings(user_id=user.id))
+            db.session.commit()
+            print(f"✅ Создана запись Settings для пользователя {user.username}")
+    # ----------------------------------------------------------------------
+    
     trial_info = None 
     stats = get_donation_stats(current_user.id)
     
