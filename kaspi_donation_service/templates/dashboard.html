@@ -1,195 +1,36 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панель управления донатами</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Montserrat:wght@400;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>Панель управления</h1>
-            <div class="user-info">
-                <span>Пользователь: <strong>{{ user.username }}</strong></span>
-                {% if user.role == 'admin' %}
-                <a href="{{ url_for('admin_panel') }}" class="admin-link">Админ панель</a>
-                {% endif %}
-                <a href="{{ url_for('logout') }}" class="logout-link">Выйти</a>
-            </div>
-        </header>
-
-        {% if trial_info %}
-        <div class="api-key-section" style="background-color: #3f2828; border-color: #dc3545;">
-            <p>{{ trial_info }}</p>
+<!-- ... остальной код ... -->
+<div class="card">
+    <h3 class="card-title">Ссылки на виджеты для OBS</h3>
+    <div class="widget-links">
+        <div class="form-group">
+            <label for="alert-url">Оповещение:</label>
+            <input type="text" id="alert-url" value="{{ url_for('alert_widget', user_id=user.id, _external=True) }}" readonly>
         </div>
-        {% endif %}
-
-        <div class="api-key-section">
-            <h3>Ваш персональный API ключ</h3>
-            <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
-            <p>Этот ключ понадобится для настройки приложения на вашем ПК.</p>
+        <div class="form-group">
+            <label for="goal-url">Сбор средств:</label>
+            <input type="text" id="goal-url" value="{{ url_for('goal_widget', user_id=user.id, _external=True) }}" readonly>
         </div>
-
-        <div class="download-agent-section">
-            <h3>Приложение для ПК</h3>
-            <p>Это приложение необходимо для отслеживания уведомлений с вашего телефона и их мгновенной отправки на стрим.</p>
-            <a href="https://drive.google.com/file/d/141_12MNTbJGaUjt11qBWpONaavpblVgW/view?usp=sharing" class="btn btn-primary" target="_blank">Скачать приложение</a>
+        <div class="form-group">
+            <label for="top-donators-url">Топ донатеров (Все):</label>
+            <input type="text" id="top-donators-url" value="{{ url_for('top_donators_widget', user_id=user.id, _external=True) }}" readonly>
+        </div>
+        <div class="form-group">
+            <label for="top-donators-day-url">Топ донатеров (День):</label>
+            <input type="text" id="top-donators-day-url" value="{{ url_for('top_donators_day_widget', user_id=user.id, _external=True) }}" readonly>
         </div>
         
-        <main class="main-grid">
-            <aside class="left-column">
-                <div class="card">
-                    <h3 class="card-title">Ссылки на виджеты для OBS</h3>
-                    <div class="widget-links">
-                        <div class="form-group">
-                            <label for="alert-url">Оповещение:</label>
-                            <input type="text" id="alert-url" value="{{ url_for('alert_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="goal-url">Сбор средств:</label>
-                            <input type="text" id="goal-url" value="{{ url_for('goal_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="top-donators-url">Топ донатеров (Все):</label>
-                            <input type="text" id="top-donators-url" value="{{ url_for('top_donators_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="top-donators-day-url">Топ донатеров (День):</label>
-                            <input type="text" id="top-donators-day-url" value="{{ url_for('top_donators_day_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="top-donators-month-url">Топ донатеров (Месяц):</label>
-                            <input type="text" id="top-donators-month-url" value="{{ url_for('top_donators_month_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="latest-donations-url">Последние донаты:</label>
-                            <input type="text" id="latest-donations-url" value="{{ url_for('latest_donations_widget', user_id=user.id, _external=True) }}" readonly>
-                        </div>
-                    </div>
-                </div>
-                 <div class="card">
-                    <h3 class="card-title">Статус подключения</h3>
-                    <div id="phone-status-indicator" class="status-indicator">
-                        <span class="status-dot"></span>
-                        <span class="status-text">Загрузка...</span>
-                    </div>
-                </div>
+        <!-- ВОТ НОВАЯ ССЫЛКА -->
+        <div class="form-group">
+            <label for="top-donators-month-url">Топ донатеров (Месяц):</label>
+            <input type="text" id="top-donators-month-url" value="{{ url_for('top_donators_month_widget', user_id=user.id, _external=True) }}" readonly>
+        </div>
+        <!-- КОНЕЦ НОВОЙ ССЫЛКИ -->
 
-                <div class="card">
-                    <h3 class="card-title">Инструменты</h3>
-                    <div class="form-actions">
-                         <button id="test-donation-btn" class="btn btn-primary">Тестовый донат</button>
-                         <button id="reset-donations-btn" class="btn btn-danger">Сбросить донаты</button>
-                    </div>
-                </div>
-            </aside>
-    
-            <section class="main-content">
-                <div class="card">
-                    <h3 class="card-title">Ручное добавление</h3>
-                    <form id="add-donation-form">
-                        <div class="form-group">
-                            <label for="name">Имя</label>
-                            <input type="text" id="name" name="name" placeholder="Аноним">
-                        </div>
-                        <div class="form-group">
-                            <label for="amount">Сумма</label>
-                            <input type="number" id="amount" name="amount" required step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label for="message">Сообщение</label>
-                            <textarea id="message" name="message" rows="2"></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Добавить донат</button>
-                    </form>
-                </div>
-    
-                <div class="card">
-                    <h3 class="card-title">Настройки сбора</h3>
-                    <form id="goal-form">
-                        <div class="form-group">
-                            <label for="goal-title">Заголовок</label>
-                            <input type="text" id="goal-title" name="goal-title">
-                        </div>
-                        <div class="form-group">
-                            <label for="goal-target">Цель</label>
-                            <input type="number" id="goal-target" name="goal-target" step="0.01">
-                        </div>
-                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Сохранить</button>
-                        </div>
-                    </form>
-                </div>
-                
-                <div class="card">
-                    <h3 class="card-title">Настройки оповещений</h3>
-                    <form id="settings-form">
-                        <div class="form-group">
-                            <label for="min-amount">Мин. сумма для оповещения</label>
-                            <input type="number" id="min-amount" name="min-amount" step="0.01">
-                        </div>
-                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Сохранить</button>
-                        </div>
-                    </form>
-                </div>
-            </section>
-    
-            <aside class="right-column">
-                <div class="card">
-                    <h3 class="card-title">Статистика донатов</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <span class="stat-label">Сегодня</span>
-                            <span class="stat-value">{{ "%.2f"|format(stats.today.sum) }} ₸</span>
-                            <span class="stat-count">{{ stats.today.count }} донатов</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">За месяц</span>
-                            <span class="stat-value">{{ "%.2f"|format(stats.month.sum) }} ₸</span>
-                            <span class="stat-count">{{ stats.month.count }} донатов</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Всего</span>
-                            <span class="stat-value">{{ "%.2f"|format(stats.total.sum) }} ₸</span>
-                            <span class="stat-count">{{ stats.total.count }} донатов</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">История донатов</h3>
-                        <button onclick="window.open('{{ url_for('latest_donations_popout', user_id=current_user.id) }}', '_blank', 'width=600,height=800')" class="btn btn-secondary btn-sm">
-                            Открыть в новом окне
-                        </button>
-                    </div>
-                    <div id="donations-list">
-                        <p>Загрузка...</p>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3 class="card-title">Топ донатеров</h3>
-                    <div id="top-donators-list">
-                        <p>Загрузка...</p>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3 class="card-title">Консоль событий</h3>
-                    <div id="console-output" class="console-output">
-                    </div>
-                </div>
-            </aside>
-        </main>
+        <div class="form-group">
+            <label for="latest-donations-url">Последние донаты:</label>
+            <input type="text" id="latest-donations-url" value="{{ url_for('latest_donations_widget', user_id=user.id, _external=True) }}" readonly>
+        </div>
     </div>
-    <script src="{{ url_for('static', filename='js/dashboard.js', v=cache_buster) }}"></script>
-</body>
-</html>
-
+</div>
+<!-- ... остальной код ... -->
 
