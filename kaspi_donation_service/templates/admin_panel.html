@@ -2,8 +2,6 @@
 {% block title %}Панель администратора{% endblock %}
 
 {% block head_extra %}
-    <!-- --- ИЗМЕНЕНИЕ --- -->
-    <!-- Добавляем "cache_buster", чтобы браузер гарантированно загрузил новую версию стилей -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css', v=cache_buster) }}">
 {% endblock %}
 
@@ -17,12 +15,6 @@
                 <th>Имя пользователя</th>
                 <th>Роль</th>
                 <th>Статус</th>
-<<<<<<< HEAD
-                <!-- НОВОЕ ПОЛЕ -->
-                <th>Пробный период (дней)</th>
-=======
-                <!-- УДАЛЕНО: Пробный период (дней) -->
->>>>>>> b4cc776 (update)
                 <th>Действие</th>
             </tr>
         </thead>
@@ -40,39 +32,15 @@
                     </td>
                     <td>
                         <select name="status" class="form-control">
-                            <!-- ИЗМЕНЕНО: Удален 'trial', добавлен 'inactive' -->
                             <option value="active" {% if u.status == 'active' %}selected{% endif %}>Active</option>
-                            <option value="trial" {% if u.status == 'trial' %}selected{% endif %}>Trial</option>
                             <option value="inactive" {% if u.status == 'inactive' %}selected{% endif %}>Inactive</option>
                         </select>
                     </td>
-<<<<<<< HEAD
-                    <!-- НОВЫЙ СТОЛБЕЦ -->
                     <td>
-                        {% if u.trial_days != 'N/A' %}
-                            {{ u.trial_days }}
-                        {% else %}
-                            {{ u.trial_days }}
-                        {% endif %}
-                    </td>
-                    <td>
-=======
-                    <!-- УДАЛЕНО: Столбец для trial_days -->
-                    <td>
->>>>>>> b4cc776 (update)
                         <div style="display: flex; gap: 5px;">
                             <button type="submit" class="btn-update">Обновить</button>
                         </div>
                     </form>
-<<<<<<< HEAD
-                    {% if u.status == 'trial' %}
-                    <form action="{{ url_for('extend_trial', user_id=u.id) }}" method="post" style="display: inline;">
-                        <button type="submit" class="btn-update" style="background-color: #008CBA;">Продлить</button>
-                    </form>
-                    {% endif %}
-=======
-                    <!-- УДАЛЕНО: Логика продления пробного периода -->
->>>>>>> b4cc776 (update)
                 </td>
             </tr>
             {% endfor %}

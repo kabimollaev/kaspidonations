@@ -201,36 +201,7 @@
             </section>
     
             <aside class="right-column">
-                <!-- НОВЫЙ БЛОК ДИАГНОСТИКИ СТАТИСТИКИ -->
-                <div class="card diagnostic-card">
-                    <h3 class="card-title">Диагностика данных</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item user-stats">
-                            <span class="stat-label">Ваша сумма ({{ user.username }})</span>
-                            <span class="stat-value">{{ "%.2f"|format(stats.total.sum) }} ₸</span>
-                            <span class="stat-count">{{ stats.total.count }} донатов</span>
-                        </div>
-                        <div class="stat-item global-stats">
-                            <span class="stat-label">Общая сумма в БД (Всего)</span>
-                             {% if stats.global_total_sum == -1.0 %}
-                                <span class="stat-value stat-error">Ошибка запроса</span>
-                                <span class="stat-count">Проверьте логи сервера</span>
-                            {% else %}
-                                <span class="stat-value stat-highlight">{{ "%.2f"|format(stats.global_total_sum) }} ₸</span>
-                                <span class="stat-count">Сумма всех донатов в базе</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                     <!-- Сообщение, если обнаружена разница -->
-                    {% if stats.global_total_sum > stats.total.sum %}
-                        <p class="warning-message">
-                            <strong>ВНИМАНИЕ:</strong> Общая сумма в БД ({{ "%.2f"|format(stats.global_total_sum) }} ₸) больше вашей личной суммы. 
-                            Это подтверждает наличие донатов, связанных с удаленными аккаунтами. 
-                        </p>
-                    {% endif %}
-                </div>
-                <!-- КОНЕЦ НОВОГО БЛОКА ДИАГНОСТИКИ -->
-
+                <!-- НОВЫЙ БЛОК СТАТИСТИКИ -->
                 <div class="card">
                     <h3 class="card-title">Статистика донатов</h3>
                     <div class="stats-grid">
@@ -245,7 +216,7 @@
                             <span class="stat-count">{{ stats.month.count }} донатов</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Всего (Ваш аккаунт)</span>
+                            <span class="stat-label">Всего</span>
                             <span class="stat-value">{{ "%.2f"|format(stats.total.sum) }} ₸</span>
                             <span class="stat-count">{{ stats.total.count }} донатов</span>
                         </div>

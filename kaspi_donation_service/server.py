@@ -17,23 +17,24 @@ from datetime import datetime, timedelta
 import gevent
 from functools import wraps
 from sqlalchemy import func
+from pathlib import Path # НОВОЕ: для более безопасного определения пути
 
 # --- Настройка путей ---
-basedir = os.path.abspath(os.path.dirname(__file__))
+basedir = Path(__file__).parent # ИЗМЕНЕНИЕ: более безопасный способ
+TTS_CACHE_DIR = basedir / 'tts_cache'
+STATIC_MEDIA_DIR = basedir / 'static' / 'media'
 
 # --- Конфигурация приложения ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
-# ИЗМЕНЕНИЕ: Используем environment-переменную DATABASE_URL для PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
+# КЛЮЧЕВОЙ МОМЕНТ: Используем environment-переменную DATABASE_URL для PostgreSQL
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{basedir / 'instance' / 'database.db'}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Создаем папки при старте, если их нет
-# ИЗМЕНЕНИЕ: Используем os.path.join
-os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
-TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
-os.makedirs(TTS_CACHE_DIR, exist_ok=True)
-os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
+(basedir / 'instance').mkdir(exist_ok=True)
+TTS_CACHE_DIR.mkdir(exist_ok=True)
+STATIC_MEDIA_DIR.mkdir(exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -52,8 +53,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    # ВОЗВРАТ trial_end_date для соответствия схеме PostgreSQL на Render.com
-    trial_end_date = db.Column(db.DateTime, nullable=True) 
+    # УДАЛЕНО: trial_end_date - КОНФЛИКТНЫЙ СТОЛБЕЦ!
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -128,19 +128,10 @@ def get_donation_stats(user_id):
     month_donations_count = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).count()
     month_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).scalar() or 0
     
-    # --- Диагностика: Общая сумма по всем пользователям ---
-    try:
-        global_total_sum = db.session.query(func.sum(Donation.amount)).scalar() or 0
-    except Exception:
-        # Возвращаем -1.0, если запрос не удался (например, таблица Donation пуста или ошибка соединения)
-        global_total_sum = -1.0
-    # ----------------------------------------------------
-    
     return {
         'total': {'count': total_donations_count, 'sum': total_donations_sum},
         'today': {'count': today_donations_count, 'sum': today_donations_sum},
         'month': {'count': month_donations_count, 'sum': month_donations_sum},
-        'global_total_sum': global_total_sum
     }
 
 # --- Фоновые задачи ---
@@ -149,9 +140,9 @@ def cleanup_tts_files():
         try:
             now = datetime.now()
             for filename in os.listdir(TTS_CACHE_DIR):
-                file_path = os.path.join(TTS_CACHE_DIR, filename)
-                if os.path.isfile(file_path):
-                    file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                file_path = TTS_CACHE_DIR / filename
+                if file_path.is_file():
+                    file_mod_time = datetime.fromtimestamp(file_path.stat().st_mtime)
                     if now - file_mod_time > timedelta(minutes=10):
                         os.remove(file_path)
         except Exception as e:
@@ -173,8 +164,8 @@ def tts_task(text, user_id):
     try:
         tts = gTTS(text, lang='ru')
         filename_part = f'tts_{uuid.uuid4()}.mp3'
-        full_path = os.path.join(TTS_CACHE_DIR, filename_part)
-        tts.save(full_path)
+        full_path = TTS_CACHE_DIR / filename_part
+        tts.save(str(full_path))
         print(f"✅ TTS создан: {full_path}")
         # Создаем относительный URL вручную, чтобы избежать ошибки контекста
         tts_url = f"/tts_cache/{filename_part}"
@@ -183,45 +174,42 @@ def tts_task(text, user_id):
         print(f"❌ Ошибка создания TTS: {e}")
 
 def get_full_update_message(user_id):
-    # ВАЖНО: Мы находимся внутри контекста приложения
-    user = db.session.get(User, user_id)
-    if not user: return {}
-    
-    donations = user.donations.order_by(Donation.timestamp.desc()).all()
-    goal = user.goal
-    settings = user.settings
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        if not user: return {}
+        
+        donations = user.donations.order_by(Donation.timestamp.desc()).all()
+        goal = user.goal
+        settings = user.settings
 
-    donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
-    goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
-    settings_data = {
-        'min_amount': settings.min_amount,
-        'tts_enabled': settings.tts_enabled,
-        'tts_volume': settings.tts_volume,
-        'alert_preset': settings.alert_preset,
-        'sound_preset': settings.sound_preset,
-        'alert_custom_url': settings.alert_custom_url,
-        'sound_custom_url': settings.sound_custom_url,
-        'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
-        'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url,
-        # НОВЫЕ ПОЛЯ
-        'font_family': settings.font_family,
-        'title_color': settings.title_color,
-        'highlight_color': settings.highlight_color,
-        'message_color': settings.message_color,
-    } if settings else {}
-    phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
+        donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
+        goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
+        settings_data = {
+            'min_amount': settings.min_amount,
+            'tts_enabled': settings.tts_enabled,
+            'tts_volume': settings.tts_volume,
+            'alert_preset': settings.alert_preset,
+            'sound_preset': settings.sound_preset,
+            'alert_custom_url': settings.alert_custom_url,
+            'sound_custom_url': settings.sound_custom_url,
+            'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
+            'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url,
+            # НОВЫЕ ПОЛЯ
+            'font_family': settings.font_family,
+            'title_color': settings.title_color,
+            'highlight_color': settings.highlight_color,
+            'message_color': settings.message_color,
+        } if settings else {}
+        phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
 
-    return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
+        return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
 
 # --- Декоратор для API ---
 def check_trial_status(user):
-    # Логика платной подписки: статус должен быть 'active'
     if user.role == 'admin' or user.status == 'active':
         return True, None
-    
-    # Если статус не 'active' и не 'admin', доступ запрещен
-    return False, 'Аккаунт неактивен. Для продолжения работы требуется оплата.'
-
+    else:
+        return False, 'Аккаунт неактивен. Пожалуйста, обратитесь к администратору для активации.'
 
 def api_login_required(f):
     @wraps(f)
@@ -250,17 +238,22 @@ def api_login_required(f):
 # --- Основные маршруты ---
 @app.route('/')
 def index():
-    # Если пользователь авторизован, принудительно сбрасываем сессию, чтобы устранить ошибку БД.
-    if current_user.is_authenticated:
-        logout_user()
-        return redirect(url_for('index')) # Редирект на себя для очистки
-    
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # Принудительный выход при попытке входа для очистки кэша сессии
-    logout_user()
+    # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Принудительный выход для очистки старой сессии ---
+    if current_user.is_authenticated: 
+        # Если пользователь аутентифицирован (имеет куки/сессию)
+        is_allowed, message = check_trial_status(current_user)
+        if is_allowed:
+            return redirect(url_for('dashboard'))
+        else:
+            flash(message, 'error')
+            # Если статус неактивен, принудительно выходим
+            logout_user() 
+            # Дополнительный logout, чтобы убедиться, что куки удалены.
+            # (Flask-Login автоматически делает это при вызове logout_user, но для надежности оставим)
 
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form.get('username')).first()
@@ -271,11 +264,10 @@ def login():
                 return redirect(url_for('dashboard'))
             else:
                 flash(message, 'error')
-                return redirect(url_for('login')) # Остаемся на странице логина
+                # Пользователь найден, но неактивен
+                logout_user()
         else:
             flash('Неверный логин или пароль.', 'error')
-    
-    # Если GET запрос или неверный POST, показываем форму входа
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -289,14 +281,14 @@ def register():
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
-                status='inactive', # НОВЫЙ СТАТУС: По умолчанию неактивен
+                status='inactive', # Новый статус
             )
             db.session.add(new_user)
             db.session.commit()
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-            flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором после оплаты.', 'success')
+            flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором.', 'success')
             return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -310,19 +302,19 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # --- ГАРАНТИРОВАННОЕ СОЗДАНИЕ GOAL/SETTINGS ---
-    # Этот блок нужен для старых аккаунтов, где Goal/Settings могли быть удалены
-    # (Например, после db.drop_all())
-    if not current_user.goal:
-        db.session.add(Goal(user_id=current_user.id))
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ 500: Проверяем и создаем связанные записи ---
+    user = db.session.get(User, current_user.id)
+    if not user.goal:
+        db.session.add(Goal(user_id=user.id))
         db.session.commit()
-    if not current_user.settings:
-        db.session.add(Settings(user_id=current_user.id))
+        print(f"✅ Создана запись Goal для пользователя {user.username}")
+    if not user.settings:
+        db.session.add(Settings(user_id=user.id))
         db.session.commit()
-    # -----------------------------------------------
-
-    trial_info = None # Убрали логику триала
+        print(f"✅ Создана запись Settings для пользователя {user.username}")
+    # ----------------------------------------------------------------------
     
+    trial_info = None 
     stats = get_donation_stats(current_user.id)
     
     return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
@@ -332,17 +324,14 @@ def dashboard():
 def admin_panel():
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    
     users_data = []
     for u in users:
-        # trial_days всегда N/A, так как триал удален
-        trial_days = 'N/A' 
         users_data.append({
             'id': u.id,
             'username': u.username,
             'role': u.role,
             'status': u.status,
-            'trial_days': trial_days
+            'trial_days': 'N/A' # Заглушка
         })
     return render_template('admin_panel.html', users=users_data)
 
@@ -356,7 +345,6 @@ def update_user(user_id):
     else:
         user.role = request.form.get('role')
         user.status = request.form.get('status')
-        # Логика продления триала удалена, так как это платный сервис
         db.session.commit()
         flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
@@ -364,10 +352,9 @@ def update_user(user_id):
 @app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
 @login_required
 def extend_trial(user_id):
-    # МАРШРУТ УДАЛЕН ИЗ ФУНКЦИОНАЛА
-    if current_user.role != 'admin': return redirect(url_for('dashboard'))
-    flash('Функция продления пробного периода удалена.', 'error')
+    flash('Пробный период отключен. Используйте статус "active" для активации.', 'warning')
     return redirect(url_for('admin_panel'))
+
 
 # --- API ---
 @app.route('/api/get_all_data', methods=['GET'])
@@ -544,22 +531,21 @@ def get_daily_top_donators():
     user = g.user
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # 1. Получаем все донаты за сегодня для этого пользователя
-    donations_today = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).all()
+    # Получаем донаты только за сегодня
+    donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).order_by(Donation.amount.desc()).all()
     
-    # 2. Агрегируем суммы по именам
-    daily_top_donators = {}
-    for d in donations_today:
-        name = d.name if d.name else 'Аноним'
-        daily_top_donators[name] = daily_top_donators.get(name, 0) + d.amount
+    # Агрегация по имени
+    top_donators = {}
+    for d in donations:
+        name = d.name
+        top_donators[name] = top_donators.get(name, 0) + d.amount
         
-    # 3. Сортируем и готовим ответ
-    sorted_donators = sorted(daily_top_donators.items(), key=lambda item: item[1], reverse=True)
+    # Сортировка и форматирование
+    sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
     
-    response_data = [{'name': name, 'amount': amount} for name, amount in sorted_donators]
+    formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
     
-    return jsonify(response_data)
-
+    return jsonify(formatted_list)
 
 # --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
@@ -629,8 +615,7 @@ def serve_tts_cache(filename):
 
 @app.route('/static/media/<path:filename>')
 def serve_media_files(filename):
-    # ИЗМЕНЕНИЕ: Используем os.path.join
-    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
+    return send_from_directory(str(STATIC_MEDIA_DIR), filename)
 
 # --- WebSocket ---
 @sock.route('/ws')
@@ -648,7 +633,7 @@ def ws(ws):
 
     is_allowed, message = check_trial_status(user)
     if not is_allowed:
-        # Отправляем сообщение об ошибке, если пробный период истек
+        # Отправляем сообщение об ошибке, если доступ запрещен
         try:
             ws.send(json.dumps({"type": "error", "message": message}))
         except Exception:
@@ -661,9 +646,6 @@ def ws(ws):
     clients[user_id].add(ws)
     print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
     try:
-        # ВАЖНО: Вызываем get_full_update_message внутри app_context
-        # (он создается автоматически при работе в Flask/Gevent),
-        # но мы убеждаемся, что сессия доступна.
         ws.send(json.dumps(get_full_update_message(user_id), ensure_ascii=False))
         while True:
             gevent.sleep(25)
@@ -679,6 +661,4 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
-    # db.create_all() УДАЛЕНО, ТАК КАК ИСПОЛЬЗУЕТСЯ СУЩЕСТВУЮЩАЯ PGSQL БД
-    # Gunicorn запускает приложение, поэтому код, который выполняется
-    # только при запуске через `python server.py`, здесь не нужен.
+    pass
