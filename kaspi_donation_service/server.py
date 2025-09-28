@@ -7,33 +7,33 @@ import uuid
 import os
 import json
 import webbrowser
+import requests # НОВОЕ: для запросов к Gemini API
+import base64 # НОВОЕ: для обработки аудио от Gemini
 from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sock import Sock
-from gtts import gTTS
 from datetime import datetime, timedelta
 import gevent
 from functools import wraps
 from sqlalchemy import func
-from pathlib import Path # НОВОЕ: для более безопасного определения пути
+from pathlib import Path
 
 # --- Настройка путей ---
-basedir = Path(__file__).parent # ИЗМЕНЕНИЕ: более безопасный способ
-TTS_CACHE_DIR = basedir / 'tts_cache'
+basedir = Path(__file__).parent
+AUDIO_CACHE_DIR = basedir / 'audio_cache' # ИЗМЕНЕНИЕ: папка для аудио от Gemini
 STATIC_MEDIA_DIR = basedir / 'static' / 'media'
 
 # --- Конфигурация приложения ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
-# КЛЮЧЕВОЙ МОМЕНТ: Используем environment-переменную DATABASE_URL для PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{basedir / 'instance' / 'database.db'}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Создаем папки при старте, если их нет
 (basedir / 'instance').mkdir(exist_ok=True)
-TTS_CACHE_DIR.mkdir(exist_ok=True)
+AUDIO_CACHE_DIR.mkdir(exist_ok=True)
 STATIC_MEDIA_DIR.mkdir(exist_ok=True)
 
 db = SQLAlchemy(app)
@@ -53,7 +53,6 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    # УДАЛЕНО: trial_end_date - КОНФЛИКТНЫЙ СТОЛБЕЦ!
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -78,33 +77,9 @@ class Settings(db.Model):
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
     tts_enabled = db.Column(db.Boolean, nullable=False, default=True)
     tts_volume = db.Column(db.Float, nullable=False, default=0.7)
-    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ВИДЖЕТОВ
-    alert_preset = db.Column(db.String(50), nullable=False, default='kaspi_default')
-    sound_preset = db.Column(db.String(50), nullable=False, default='default')
-    alert_custom_url = db.Column(db.String(255), nullable=True)
-    sound_custom_url = db.Column(db.String(255), nullable=True)
-    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ТЕКСТА
-    font_family = db.Column(db.String(100), nullable=False, default='Inter')
-    title_color = db.Column(db.String(20), nullable=False, default='#FFFFFF')
-    highlight_color = db.Column(db.String(20), nullable=False, default='#F14635')
-    message_color = db.Column(db.String(20), nullable=False, default='#A0AEC0')
+    # УДАЛЕНО: Поля для кастомизации виджетов
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
-
-# Константы для готовых пресетов
-ALERT_PRESETS = {
-    'kaspi_default': {'name': 'Kaspi (по умолчанию)', 'url': '/static/media/alert.gif'},
-    'money_stack': {'name': 'Пачка денег', 'url': 'https://media.giphy.com/media/l4pTsh45Dg7mwfLgA/giphy.gif'},
-    'cheering_crowd': {'name': 'Аплодирующая толпа', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
-    'fire_animation': {'name': 'Анимация огня', 'url': 'https://media.giphy.com/media/l4pT4f1B6lM4sT6tO/giphy.gif'},
-    'gold_explosion': {'name': 'Взрыв золота', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
-}
-
-SOUND_PRESETS = {
-    'default': {'name': 'Классический звук', 'url': '/static/media/alert.mp3'},
-    'cash_register': {'name': 'Кассовый аппарат', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
-    'fanfare': {'name': 'Фанфары', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'},
-}
 
 # --- Вспомогательные функции ---
 @login_manager.user_loader
@@ -116,6 +91,7 @@ def inject_cache_buster():
     return dict(cache_buster=int(time.time()))
 
 def get_donation_stats(user_id):
+    # ... (код без изменений)
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
@@ -135,18 +111,18 @@ def get_donation_stats(user_id):
     }
 
 # --- Фоновые задачи ---
-def cleanup_tts_files():
+def cleanup_audio_files():
     while True:
         try:
             now = datetime.now()
-            for filename in os.listdir(TTS_CACHE_DIR):
-                file_path = TTS_CACHE_DIR / filename
+            for filename in os.listdir(AUDIO_CACHE_DIR):
+                file_path = AUDIO_CACHE_DIR / filename
                 if file_path.is_file():
                     file_mod_time = datetime.fromtimestamp(file_path.stat().st_mtime)
                     if now - file_mod_time > timedelta(minutes=10):
                         os.remove(file_path)
         except Exception as e:
-            print(f"❌ Ошибка при очистке TTS кэша: {e}")
+            print(f"❌ Ошибка при очистке аудио кэша: {e}")
         gevent.sleep(60 * 15)
 
 # --- Функции для Real-time обновлений ---
@@ -159,19 +135,47 @@ def broadcast_to_user(user_id, message_data):
             except Exception:
                 clients[user_id].remove(ws)
 
-def tts_task(text, user_id):
-    # ИСПРАВЛЕНИЕ: Эта функция теперь не требует контекста приложения
+# НОВОЕ: Функция для генерации речи через Gemini
+def gemini_tts_task(text, user_id):
     try:
-        tts = gTTS(text, lang='ru')
-        filename_part = f'tts_{uuid.uuid4()}.mp3'
-        full_path = TTS_CACHE_DIR / filename_part
-        tts.save(str(full_path))
-        print(f"✅ TTS создан: {full_path}")
-        # Создаем относительный URL вручную, чтобы избежать ошибки контекста
-        tts_url = f"/tts_cache/{filename_part}"
-        broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            print("❌ GEMINI_API_KEY не установлен в переменных окружения.")
+            return
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        headers = {'Content-Type': 'application/json'}
+        payload = {
+            "contents": [{
+                "parts": [{"text": f"Произнеси с выражением и хорошим настроением: {text}"}]
+            }],
+            "generationConfig": {
+                "responseMimeType": "audio/mpeg"
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=payload)
+
+        if response.status_code == 200:
+            response_json = response.json()
+            audio_content_base64 = response_json['candidates'][0]['content']['parts'][0]['inlineData']['data']
+            audio_data = base64.b64decode(audio_content_base64)
+            
+            filename_part = f'gemini_tts_{uuid.uuid4()}.mp3'
+            full_path = AUDIO_CACHE_DIR / filename_part
+            
+            with open(full_path, 'wb') as f:
+                f.write(audio_data)
+
+            print(f"✅ Gemini TTS создан: {full_path}")
+            tts_url = f"/audio_cache/{filename_part}"
+            broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
+        else:
+            print(f"❌ Ошибка Gemini API: {response.status_code} - {response.text}")
+
     except Exception as e:
-        print(f"❌ Ошибка создания TTS: {e}")
+        print(f"❌ Ошибка создания Gemini TTS: {e}")
+
 
 def get_full_update_message(user_id):
     with app.app_context():
@@ -188,17 +192,8 @@ def get_full_update_message(user_id):
             'min_amount': settings.min_amount,
             'tts_enabled': settings.tts_enabled,
             'tts_volume': settings.tts_volume,
-            'alert_preset': settings.alert_preset,
-            'sound_preset': settings.sound_preset,
-            'alert_custom_url': settings.alert_custom_url,
-            'sound_custom_url': settings.sound_custom_url,
-            'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
-            'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url,
-            # НОВЫЕ ПОЛЯ
-            'font_family': settings.font_family,
-            'title_color': settings.title_color,
-            'highlight_color': settings.highlight_color,
-            'message_color': settings.message_color,
+            'alert_url': '/static/media/alert.gif', # Заглушка, т.к. кастомизация удалена
+            'sound_url': '/static/media/alert.mp3', # Заглушка
         } if settings else {}
         phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
 
@@ -206,20 +201,20 @@ def get_full_update_message(user_id):
 
 # --- Декоратор для API ---
 def check_trial_status(user):
+    # ... (код без изменений)
     if user.role == 'admin' or user.status == 'active':
         return True, None
     else:
         return False, 'Аккаунт неактивен. Пожалуйста, обратитесь к администратору для активации.'
 
 def api_login_required(f):
+    # ... (код без изменений)
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = None
-        # Проверка по сессии (для браузера)
         if current_user.is_authenticated:
             user = current_user
         else:
-            # Проверка по API-ключу (для приложения на ПК)
             api_key = request.headers.get('X-API-Key')
             if not api_key:
                 return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
@@ -235,25 +230,21 @@ def api_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Основные маршруты ---
+# --- Основные маршруты (без изменений) ---
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# ... (остальные маршруты до /dashboard без изменений)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Принудительный выход для очистки старой сессии ---
     if current_user.is_authenticated: 
-        # Если пользователь аутентифицирован (имеет куки/сессию)
         is_allowed, message = check_trial_status(current_user)
         if is_allowed:
             return redirect(url_for('dashboard'))
         else:
             flash(message, 'error')
-            # Если статус неактивен, принудительно выходим
             logout_user() 
-            # Дополнительный logout, чтобы убедиться, что куки удалены.
-            # (Flask-Login автоматически делает это при вызове logout_user, но для надежности оставим)
 
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form.get('username')).first()
@@ -264,7 +255,6 @@ def login():
                 return redirect(url_for('dashboard'))
             else:
                 flash(message, 'error')
-                # Пользователь найден, но неактивен
                 logout_user()
         else:
             flash('Неверный логин или пароль.', 'error')
@@ -281,7 +271,7 @@ def register():
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
-                status='inactive', # Новый статус
+                status='inactive',
             )
             db.session.add(new_user)
             db.session.commit()
@@ -302,23 +292,20 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # --- ИСПРАВЛЕНИЕ ОШИБКИ 500: Проверяем и создаем связанные записи ---
     user = db.session.get(User, current_user.id)
     if not user.goal:
         db.session.add(Goal(user_id=user.id))
         db.session.commit()
-        print(f"✅ Создана запись Goal для пользователя {user.username}")
     if not user.settings:
         db.session.add(Settings(user_id=user.id))
         db.session.commit()
-        print(f"✅ Создана запись Settings для пользователя {user.username}")
-    # ----------------------------------------------------------------------
     
     trial_info = None 
     stats = get_donation_stats(current_user.id)
     
-    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats)
 
+# ... (маршруты admin без изменений)
 @app.route('/admin')
 @login_required
 def admin_panel():
@@ -331,7 +318,7 @@ def admin_panel():
             'username': u.username,
             'role': u.role,
             'status': u.status,
-            'trial_days': 'N/A' # Заглушка
+            'trial_days': 'N/A'
         })
     return render_template('admin_panel.html', users=users_data)
 
@@ -355,17 +342,13 @@ def extend_trial(user_id):
     flash('Пробный период отключен. Используйте статус "active" для активации.', 'warning')
     return redirect(url_for('admin_panel'))
 
-
 # --- API ---
 @app.route('/api/get_all_data', methods=['GET'])
 @api_login_required
 def get_all_data():
     user = g.user
     full_update = get_full_update_message(user.id)
-    
-    # Добавляем статистику в API-ответ
     full_update['data']['stats'] = get_donation_stats(user.id)
-    
     return jsonify(full_update['data'])
 
 @app.route('/api/submit_donation', methods=['POST'])
@@ -383,49 +366,16 @@ def submit_donation():
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        gevent.spawn(tts_task, tts_message, user.id)
+        gevent.spawn(gemini_tts_task, tts_message, user.id) # ИЗМЕНЕНИЕ: вызов Gemini TTS
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
-@app.route('/api/update_widget_settings', methods=['POST'])
-@api_login_required
-def update_widget_settings():
-    user = g.user
-    data = request.json
-    
-    settings = user.settings or Settings(user_id=user.id)
-    
-    # ИСПРАВЛЕНИЕ: Проверяем каждое значение перед обновлением, чтобы избежать сохранения None
-    if data.get('alert_preset') is not None:
-        settings.alert_preset = data.get('alert_preset')
-    if data.get('sound_preset') is not None:
-        settings.sound_preset = data.get('sound_preset')
-    
-    settings.alert_custom_url = data.get('alert_custom_url')
-    settings.sound_custom_url = data.get('sound_custom_url')
-    
-    if data.get('font_family') is not None:
-        settings.font_family = data.get('font_family')
-    if data.get('title_color') is not None:
-        settings.title_color = data.get('title_color')
-    if data.get('highlight_color') is not None:
-        settings.highlight_color = data.get('highlight_color')
-    if 'message_color' in data and data['message_color']:
-        settings.message_color = data['message_color']
-    
-    if not user.settings:
-        db.session.add(settings)
-    
-    db.session.commit()
-    
-    broadcast_to_user(user.id, get_full_update_message(user.id))
-    
-    return jsonify({'status': 'success'})
-
+# УДАЛЕНО: /api/update_widget_settings
 
 @app.route('/api/update_goal', methods=['POST'])
 @api_login_required
 def update_goal():
+    # ... (код без изменений)
     user = g.user
     data = request.json
     user.goal.title = data.get('title')
@@ -437,6 +387,7 @@ def update_goal():
 @app.route('/api/update_settings', methods=['POST'])
 @api_login_required
 def update_settings():
+    # ... (код без изменений)
     user = g.user
     data = request.json
     user.settings.min_amount = float(data.get('min_amount', 0))
@@ -459,13 +410,14 @@ def add_manual_donation():
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        gevent.spawn(tts_task, tts_message, user.id)
+        gevent.spawn(gemini_tts_task, tts_message, user.id) # ИЗМЕНЕНИЕ: вызов Gemini TTS
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
 @app.route('/api/reset_donations', methods=['POST'])
 @api_login_required
 def reset_donations():
+    # ... (код без изменений)
     user = g.user
     user.donations.delete()
     user.goal.current_amount = 0
@@ -476,6 +428,7 @@ def reset_donations():
 @app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
 @api_login_required
 def delete_donation(donation_id):
+    # ... (код без изменений)
     user = g.user
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
@@ -497,7 +450,7 @@ def replay_donation(donation_id):
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        gevent.spawn(tts_task, tts_message, user.id)
+        gevent.spawn(gemini_tts_task, tts_message, user.id) # ИЗМЕНЕНИЕ: вызов Gemini TTS
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
@@ -508,9 +461,10 @@ def test_donation_api():
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     if user.settings.tts_enabled:
         tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
-        gevent.spawn(tts_task, tts_message, user.id)
+        gevent.spawn(gemini_tts_task, tts_message, user.id) # ИЗМЕНЕНИЕ: вызов Gemini TTS
     return jsonify({'status': 'success'})
 
+# ... (остальные API-маршруты без изменений)
 @app.route('/api/get_phone_status', methods=['GET'])
 @api_login_required
 def get_phone_status():
@@ -530,27 +484,19 @@ def update_phone_status():
 def get_daily_top_donators():
     user = g.user
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Получаем донаты только за сегодня
     donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).order_by(Donation.amount.desc()).all()
-    
-    # Агрегация по имени
     top_donators = {}
     for d in donations:
         name = d.name
         top_donators[name] = top_donators.get(name, 0) + d.amount
-        
-    # Сортировка и форматирование
     sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
-    
     formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
-    
     return jsonify(formatted_list)
 
 # --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
-    # Добавляем проверку статуса пользователя для виджетов
+    # ... (код без изменений)
     user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
@@ -559,6 +505,7 @@ def alert_widget(user_id):
         return f"Доступ запрещен. {message}", 403
     return render_template('alert.html', user_id=user_id)
 
+# ... (остальные маршруты виджетов без изменений)
 @app.route('/goal/<int:user_id>')
 def goal_widget(user_id):
     user = db.session.get(User, user_id)
@@ -609,9 +556,9 @@ def latest_donations_popout(user_id):
         return f"Доступ запрещен. {message}", 403
     return render_template('latest_donations_popout.html', user_id=user_id)
 
-@app.route('/tts_cache/<path:filename>')
-def serve_tts_cache(filename):
-    return send_from_directory(TTS_CACHE_DIR, filename)
+@app.route('/audio_cache/<path:filename>')
+def serve_audio_cache(filename):
+    return send_from_directory(AUDIO_CACHE_DIR, filename)
 
 @app.route('/static/media/<path:filename>')
 def serve_media_files(filename):
@@ -620,6 +567,7 @@ def serve_media_files(filename):
 # --- WebSocket ---
 @sock.route('/ws')
 def ws(ws):
+    # ... (код без изменений)
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         if current_user.is_authenticated:
@@ -633,7 +581,6 @@ def ws(ws):
 
     is_allowed, message = check_trial_status(user)
     if not is_allowed:
-        # Отправляем сообщение об ошибке, если доступ запрещен
         try:
             ws.send(json.dumps({"type": "error", "message": message}))
         except Exception:
@@ -660,5 +607,6 @@ def ws(ws):
 
 # --- Запуск ---
 if __name__ != '__main__':
-    gevent.spawn(cleanup_tts_files)
+    gevent.spawn(cleanup_audio_files)
     pass
+

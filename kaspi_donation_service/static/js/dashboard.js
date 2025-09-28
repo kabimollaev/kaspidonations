@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
         addDonationForm: document.getElementById('add-donation-form'),
         goalForm: document.getElementById('goal-form'),
         settingsForm: document.getElementById('settings-form'),
-        widgetCustomizationForm: document.getElementById('widget-customization-form'),
+        // УДАЛЕНО: widgetCustomizationForm
         resetDonationsBtn: document.getElementById('reset-donations-btn'),
         testDonationBtn: document.getElementById('test-donation-btn'),
         donationsList: document.getElementById('donations-list'),
@@ -22,15 +22,8 @@ document.addEventListener('DOMContentLoaded', function() {
         minAmountInput: document.getElementById('min-amount'),
         ttsEnabledInput: document.getElementById('tts-enabled'),
         ttsVolumeInput: document.getElementById('tts-volume'),
-        alertPresetSelect: document.getElementById('alert-preset'),
-        alertCustomUrlInput: document.getElementById('alert-custom-url'),
-        soundPresetSelect: document.getElementById('sound-preset'),
-        soundCustomUrlInput: document.getElementById('sound-custom-url'),
-        fontFamilySelect: document.getElementById('font-family'),
-        titleColorInput: document.getElementById('title-color'),
-        highlightColorInput: document.getElementById('highlight-color'),
-        messageColorInput: document.getElementById('message-color'),
         apiKeyInput: document.getElementById('api-key-input')
+        // УДАЛЕНО: Поля кастомизации
     };
 
     let lastPhoneStatus = '';
@@ -41,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function() {
             method,
             headers: { 
                 'Content-Type': 'application/json',
-                // Использование API Key для всех запросов
                 'X-API-Key': elements.apiKeyInput ? elements.apiKeyInput.value : '' 
             },
         };
@@ -70,19 +62,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Обновление статуса Phone Link ---
     function updatePhoneStatus(status) {
+        // ... (код без изменений)
         if (!elements.phoneStatusIndicator) return;
-        
         const indicator = elements.phoneStatusIndicator;
         const dot = indicator.querySelector('.status-dot');
         const text = indicator.querySelector('.status-text');
-        
-        // Если статус не пришел или не содержит connected, устанавливаем "Нет данных"
         if (!status || status.connected === undefined) {
              dot.className = 'status-dot status-disconnected';
              text.textContent = 'Нет данных';
              return;
         }
-
         if (status.connected) {
             dot.className = 'status-dot status-connected';
             text.textContent = status.message || 'Подключен';
@@ -99,16 +88,15 @@ document.addEventListener('DOMContentLoaded', function() {
         renderTopDonators();
         updateForms();
         updateStats();
-        // ВАЖНО: Обновление статуса телефона происходит здесь
         if (currentData.phone_status) {
             updatePhoneStatus(currentData.phone_status);
         } else {
-             // Если phone_status не пришел в initial load, показываем, что нет данных
              updatePhoneStatus({ connected: undefined });
         }
     }
 
     function escapeHtml(unsafe) {
+        // ... (код без изменений)
         if (typeof unsafe !== 'string') return '';
         return unsafe
              .replace(/&/g, "&amp;")
@@ -119,6 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderDonationsList() {
+        // ... (код без изменений)
         const donations = currentData.donations || [];
         const listEl = elements.donationsList;
         if (!listEl) return;
@@ -142,24 +131,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function renderTopDonators() {
+        // ... (код без изменений)
         const donations = currentData.donations || [];
         const listEl = elements.topDonatorsList;
         if (!listEl) return;
-    
         const topDonators = donations.reduce((acc, d) => {
             acc[d.name] = (acc[d.name] || 0) + d.amount;
             return acc;
         }, {});
-    
         const sorted = Object.entries(topDonators)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 10);
-    
         if (sorted.length === 0) {
             listEl.innerHTML = '<p>Донатов пока нет.</p>';
             return;
         }
-    
         listEl.innerHTML = sorted.map(([name, amount], index) => `
             <div class="top-donator-item">
                 <span class="donator-rank">#${index + 1}</span>
@@ -183,33 +169,10 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.ttsEnabledInput.checked = settings.tts_enabled || false;
             elements.ttsVolumeInput.value = settings.tts_volume || 0.7;
         }
-        
-        // Обновление полей кастомизации
-        if (elements.alertPresetSelect) {
-            elements.alertPresetSelect.value = settings.alert_preset || 'kaspi_default';
-            elements.alertCustomUrlInput.value = settings.alert_custom_url || '';
-            elements.alertCustomUrlInput.style.display = (settings.alert_preset === 'custom') ? 'block' : 'none';
-        }
-        if (elements.soundPresetSelect) {
-            elements.soundPresetSelect.value = settings.sound_preset || 'default';
-            elements.soundCustomUrlInput.value = settings.sound_custom_url || '';
-            elements.soundCustomUrlInput.style.display = (settings.sound_preset === 'custom') ? 'block' : 'none';
-        }
-        if (elements.fontFamilySelect) {
-            elements.fontFamilySelect.value = settings.font_family || 'Inter';
-        }
-        if (elements.titleColorInput) {
-            elements.titleColorInput.value = settings.title_color || '#FFFFFF';
-        }
-        if (elements.highlightColorInput) {
-            elements.highlightColorInput.value = settings.highlight_color || '#F14635';
-        }
-        if (elements.messageColorInput) {
-            elements.messageColorInput.value = settings.message_color || '#A0AEC0';
-        }
     }
     
     function updateStats() {
+        // ... (код без изменений)
         const stats = currentData.stats || {};
         if (stats) {
             document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today.sum || 0).toFixed(2)} ₸`;
@@ -223,6 +186,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Глобальные функции для кнопок ---
     window.replayDonation = async function(donationId) {
+        // ... (код без изменений)
         const result = await fetchApi(`/api/replay_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
             logToConsole(`🔄 Повторное воспроизведение доната #${donationId}`, 'info');
@@ -230,8 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteDonation = async function(donationId) {
-        // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
-        // В реальном приложении здесь должен быть кастомный модал
+        // ... (код без изменений)
         console.log(`[ACTION] Запрос на удаление доната #${donationId}`); 
         const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
@@ -241,44 +204,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Логирование в консоль ---
     function logToConsole(message, type = 'info') {
+        // ... (код без изменений)
         const consoleEl = elements.consoleOutput;
         if (!consoleEl) return;
-        
         const timestamp = new Date().toLocaleTimeString('ru-RU');
         const logEntry = document.createElement('div');
         logEntry.className = `console-entry console-${type}`;
         logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
         consoleEl.appendChild(logEntry);
-        
         const entries = consoleEl.querySelectorAll('.console-entry');
-        if (entries.length > 10) { // Увеличим лимит для наглядности
+        if (entries.length > 10) {
             entries[0].remove();
         }
-        
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
     // --- WebSocket ---
     function connectWebSocket() {
+        // ... (код без изменений)
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
-
         ws.onopen = () => {
             console.log('Соединение с WebSocket установлено.');
             logToConsole('Соединение с WebSocket установлено.', 'success');
         };
-
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             handleWebSocketMessage(message);
         };
-
         ws.onclose = () => {
             console.log('Соединение с WebSocket закрыто. Попытка переподключения...');
             logToConsole('Соединение с WebSocket закрыто. Попытка переподключения...', 'error');
             setTimeout(connectWebSocket, 3000);
         };
-
         ws.onerror = (error) => {
             console.error('WebSocket ошибка.', 'error');
             logToConsole('WebSocket ошибка.', 'error');
@@ -292,11 +250,9 @@ document.addEventListener('DOMContentLoaded', function() {
             currentData = message.data;
             renderAll();
         } else if (message.type === 'phone_status_update') {
-            // ИЗМЕНЕНИЕ: Только обновляем индикатор, без спама в консоль
             updatePhoneStatus(message.data);
         } else if (message.type === 'show_alert') {
             logToConsole(`📢 Новый донат: ${message.data.name} - ${message.data.amount}₸`, 'success');
-            // Обновляем данные, чтобы список донатов сразу обновился
             loadData();
         }
     }
@@ -349,22 +305,10 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        if (elements.widgetCustomizationForm) {
-            elements.widgetCustomizationForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const data = Object.fromEntries(formData.entries());
-                
-                const result = await fetchApi('/api/update_widget_settings', 'POST', data);
-                if (result && result.status === 'success') {
-                    logToConsole(`🎨 Настройки виджета обновлены`, 'info');
-                }
-            });
-        }
+        // УДАЛЕНО: обработчик для widgetCustomizationForm
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
-                // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
                 console.log('[ACTION] Запрос на сброс истории донатов.');
                 const result = await fetchApi('/reset_donations', 'POST');
                 if (result && result.status === 'success') {
@@ -381,34 +325,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
-        // Логика для отображения/скрытия полей кастомных URL
-        if (elements.alertPresetSelect) {
-            elements.alertPresetSelect.addEventListener('change', (e) => {
-                if (e.target.value === 'custom') {
-                    elements.alertCustomUrlInput.style.display = 'block';
-                } else {
-                    elements.alertCustomUrlInput.style.display = 'none';
-                }
-            });
-        }
-        
-        if (elements.soundPresetSelect) {
-            elements.soundPresetSelect.addEventListener('change', (e) => {
-                if (e.target.value === 'custom') {
-                    elements.soundCustomUrlInput.style.display = 'block';
-                } else {
-                    elements.soundCustomUrlInput.style.display = 'none';
-                }
-            });
-        }
     }
 
     // --- Загрузка данных ---
     async function loadData() {
-        // Устанавливаем начальный статус "Нет данных" перед запросом
         updatePhoneStatus({ connected: undefined });
-        
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
@@ -422,3 +343,4 @@ document.addEventListener('DOMContentLoaded', function() {
     loadData();
     initEventListeners();
 });
+

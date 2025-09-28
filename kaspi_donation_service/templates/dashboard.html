@@ -31,14 +31,12 @@
         <div class="api-key-section">
             <h3>Ваш персональный API ключ</h3>
             <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
-            <p>Этот ключ понадобится для настройки приложения на вашем ПК.</p>
+            <p>Этот ключ понадобится для настройки приложения на вашем ПК. **ВАЖНО:** Для озвучки Gemini TTS вам также необходимо установить переменную окружения `GEMINI_API_KEY` на вашем сервере.</p>
         </div>
 
-        <!-- ИЗМЕНЕНИЕ: Новый блок для скачивания -->
         <div class="download-agent-section">
             <h3>Приложение для ПК</h3>
             <p>Это приложение необходимо для отслеживания уведомлений с вашего телефона и их мгновенной отправки на стрим.</p>
-            <!-- ИЗМЕНЕНИЕ: Ссылка на Google Drive -->
             <a href="https://drive.google.com/file/d/141_12MNTbJGaUjt11qBWpONaavpblVgW/view?usp=sharing" class="btn btn-primary" target="_blank">Скачать приложение</a>
         </div>
         
@@ -144,64 +142,10 @@
                     </form>
                 </div>
                 
-                <!-- НОВАЯ СЕКЦИЯ ДЛЯ КАСТОМИЗАЦИИ -->
-                <div class="card">
-                    <h3 class="card-title">Виджеты - Кастомизация</h3>
-                    <form id="widget-customization-form">
-                         <!-- НОВЫЙ ВЫБОР ШРИФТА -->
-                        <div class="form-group">
-                            <label for="font-family">Шрифт</label>
-                            <select id="font-family" name="font-family" class="form-control">
-                                <option value="Inter" {% if user.settings.font_family == 'Inter' %}selected{% endif %}>Inter (по умолчанию)</option>
-                                <option value="Roboto" {% if user.settings.font_family == 'Roboto' %}selected{% endif %}>Roboto</option>
-                                <option value="Open Sans" {% if user.settings.font_family == 'Open Sans' %}selected{% endif %}>Open Sans</option>
-                                <option value="Montserrat" {% if user.settings.font_family == 'Montserrat' %}selected{% endif %}>Montserrat</option>
-                                <option value="Ubuntu Mono" {% if user.settings.font_family == 'Ubuntu Mono' %}selected{% endif %}>Ubuntu Mono</option>
-                            </select>
-                        </div>
-                         <!-- НОВАЯ НАСТРОЙКА ЦВЕТОВ -->
-                        <div class="form-group">
-                            <label for="title-color">Цвет текста (заголовок)</label>
-                            <input type="color" id="title-color" name="title-color" class="color-picker" value="{{ user.settings.title_color }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="highlight-color">Цвет выделения (сумма)</label>
-                            <input type="color" id="highlight-color" name="highlight-color" class="color-picker" value="{{ user.settings.highlight_color }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="message-color">Цвет сообщения</label>
-                            <input type="color" id="message-color" name="message-color" class="color-picker" value="{{ user.settings.message_color }}">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="alert-preset">Пресет оповещения</label>
-                            <select id="alert-preset" name="alert-preset" class="form-control">
-                                {% for key, value in ALERT_PRESETS.items() %}
-                                <option value="{{ key }}" {% if key == user.settings.alert_preset %}selected{% endif %}>{{ value.name }}</option>
-                                {% endfor %}
-                                <option value="custom" {% if user.settings.alert_preset not in ALERT_PRESETS %}selected{% endif %}>Своя GIF-анимация</option>
-                            </select>
-                            <input type="url" id="alert-custom-url" name="alert-custom-url" placeholder="URL вашей GIF-анимации" value="{{ user.settings.alert_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.alert_preset != 'custom' %}display: none;{% endif %}">
-                        </div>
-                        <div class="form-group">
-                            <label for="sound-preset">Пресет звука</label>
-                            <select id="sound-preset" name="sound-preset" class="form-control">
-                                {% for key, value in SOUND_PRESETS.items() %}
-                                <option value="{{ key }}" {% if key == user.settings.sound_preset %}selected{% endif %}>{{ value.name }}</option>
-                                {% endfor %}
-                                <option value="custom" {% if user.settings.sound_preset != 'custom' %}selected{% endif %}>Свой звук</option>
-                            </select>
-                            <input type="url" id="sound-custom-url" name="sound-custom-url" placeholder="URL вашего звука (.mp3)" value="{{ user.settings.sound_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.sound_preset != 'custom' %}display: none;{% endif %}">
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Сохранить виджеты</button>
-                        </div>
-                    </form>
-                </div>
+                <!-- УДАЛЕНО: Секция кастомизации виджетов -->
             </section>
     
             <aside class="right-column">
-                <!-- НОВЫЙ БЛОК СТАТИСТИКИ -->
                 <div class="card">
                     <h3 class="card-title">Статистика донатов</h3>
                     <div class="stats-grid">
@@ -253,3 +197,4 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
+
