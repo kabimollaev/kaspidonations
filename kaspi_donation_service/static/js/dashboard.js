@@ -41,7 +41,12 @@ document.addEventListener('DOMContentLoaded', function() {
             method,
             headers: { 
                 'Content-Type': 'application/json',
+<<<<<<< HEAD
                 'X-API-Key': elements.apiKeyInput.value
+=======
+                // Использование API Key для всех запросов
+                'X-API-Key': elements.apiKeyInput ? elements.apiKeyInput.value : '' 
+>>>>>>> b4cc776 (update)
             },
         };
         if (body) {
@@ -221,11 +226,20 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteDonation = async function(donationId) {
+<<<<<<< HEAD
         if (confirm('Удалить этот донат?')) {
             const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
             if (result && result.status === 'success') {
                 logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
             }
+=======
+        // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
+        // В реальном приложении здесь должен быть кастомный модал
+        console.log(`[ACTION] Запрос на удаление доната #${donationId}`); 
+        const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
+        if (result && result.status === 'success') {
+            logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
+>>>>>>> b4cc776 (update)
         }
     };
 
@@ -355,11 +369,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
+<<<<<<< HEAD
                 if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
                     const result = await fetchApi('/reset_donations', 'POST');
                     if (result && result.status === 'success') {
                         logToConsole(`🗑️ История донатов сброшена`, 'warning');
                     }
+=======
+                // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
+                console.log('[ACTION] Запрос на сброс истории донатов.');
+                const result = await fetchApi('/reset_donations', 'POST');
+                if (result && result.status === 'success') {
+                    logToConsole(`🗑️ История донатов сброшена`, 'warning');
+>>>>>>> b4cc776 (update)
                 }
             });
         }

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Топ донатов дня</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="widget-container">
+        <h3 class="widget-title">Топ донатов дня</h3>
+        <div id="donators-list">
+            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const listElement = document.getElementById('donators-list');
+            const user_id = window.location.pathname.split('/')[2] || '1';
+
+            function escapeHtml(unsafe) {
+                return (unsafe || "").toString()
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            }
+            
+            async function fetchDailyTopDonators() {
+                try {
+                    const response = await fetch(`/api/get_daily_top_donators`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    updateList(data.top_donators_day);
+                } catch (error) {
+                    console.error("Ошибка при получении данных Top Donators Day:", error);
+                    listElement.innerHTML = '<p style="text-align: center; color: #dc3545;">Ошибка загрузки данных.</p>';
+                }
+            }
+            
+            function updateList(topDonators) {
+                if (!topDonators || topDonators.length === 0) {
+                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов сегодня пока нет.</p>';
+                    return;
+                }
+                
+                listElement.innerHTML = topDonators.map((d, index) => `
+                    <div class="donator-item" style="animation-delay: ${index * 100}ms">
+                        <span class="donator-rank">#${index + 1}</span>
+                        <span class="donator-name">${escapeHtml(d.name)}</span>
+                        <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
+                    </div>
+                `).join('');
+            }
+            
+            // NOTE: Мы не используем WebSocket для этого виджета, так как данные меняются редко 
+            // и проще обновить их через API (как в оригинальной структуре).
+            // Добавляем повторное обновление для симуляции реального времени
+            fetchDailyTopDonators();
+            setInterval(fetchDailyTopDonators, 30000); // Обновляем каждые 30 секунд
+        });
+    </script>
+</body>
+</html>

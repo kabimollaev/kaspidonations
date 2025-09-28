@@ -14,7 +14,8 @@
         <div class="auth-container">
             <div class="auth-box">
                 <h2>Создание аккаунта</h2>
-                <p>Присоединяйтесь к нам!</p>
+                <!-- ИЗМЕНЕНИЕ: Убрана фраза о бесплатном периоде -->
+                <p>Пройдите регистрацию, чтобы получить данные для активации.</p>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -41,4 +42,3 @@
     </div>
 </body>
 </html>
-
