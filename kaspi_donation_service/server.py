@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import gevent
 from functools import wraps
 from sqlalchemy import func
-from pathlib import Path
+from pathlib import Path 
 
 # --- Настройка путей ---
 basedir = Path(__file__).parent
@@ -48,7 +48,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
-    api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    # ИСПРАВЛЕНИЕ: Убираем default функцию, которая несовместима с PostgreSQL
+    api_key = db.Column(db.String(120), unique=True, nullable=False)
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -72,7 +73,6 @@ class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
-
 
 # --- Вспомогательные функции ---
 @login_manager.user_loader
@@ -198,16 +198,21 @@ def register():
             flash('Имя пользователя уже занято.', 'error')
         else:
             hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
+            # ИСПРАВЛЕНИЕ: Генерируем ключ здесь, а не в модели
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
+                api_key=str(uuid.uuid4()),
                 status='inactive',
             )
             db.session.add(new_user)
-            db.session.commit()
+            db.session.commit() # Сначала коммитим пользователя, чтобы получить его ID
+            
+            # Затем создаем связанные записи
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
+
             flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором.', 'success')
             return redirect(url_for('login'))
     return render_template('register.html')
@@ -281,23 +286,6 @@ def get_all_data():
     full_update['data']['stats'] = get_donation_stats(user.id)
     return jsonify(full_update['data'])
 
-def send_donation_alert(user, donation):
-    # Проверяем, превышает ли сумма доната минимальную
-    if donation.amount < user.settings.min_amount:
-        return
-
-    donation_data = {
-        'id': donation.id, 
-        'name': donation.name, 
-        'amount': donation.amount, 
-        'message': donation.message
-    }
-    
-    broadcast_to_user(user.id, {
-        "type": "show_alert",
-        "data": donation_data
-    })
-
 @app.route('/api/submit_donation', methods=['POST'])
 @api_login_required
 def submit_donation():
@@ -309,9 +297,8 @@ def submit_donation():
     db.session.add(new_donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    
-    send_donation_alert(user, new_donation)
-    
+    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -346,9 +333,8 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    
-    send_donation_alert(user, donation)
-
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -382,23 +368,16 @@ def replay_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Донат не найден'}), 404
-    
-    send_donation_alert(user, donation)
-
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
 @api_login_required
 def test_donation_api():
     user = g.user
-    class MockDonation:
-        id = f"test_{int(time.time())}"
-        name = 'Тестер'
-        amount = 100
-        message = 'Это тестовый донат!'
-    
-    send_donation_alert(user, MockDonation())
-    
+    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status', methods=['GET'])
@@ -420,41 +399,28 @@ def update_phone_status():
 def get_daily_top_donators():
     user = g.user
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Получаем донаты только за сегодня
     donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).order_by(Donation.amount.desc()).all()
-    
-    # Агрегация по имени
     top_donators = {}
     for d in donations:
         name = d.name
         top_donators[name] = top_donators.get(name, 0) + d.amount
-        
-    # Сортировка и форматирование
     sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
-    
     formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
-    
-    return jsonify(formatted_list)
+    return jsonify({'top_donators_day': formatted_list})
 
 @app.route('/api/get_monthly_top_donators', methods=['GET'])
 @api_login_required
 def get_monthly_top_donators():
     user = g.user
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= month_start).all()
-    
+    donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= month_start).order_by(Donation.amount.desc()).all()
     top_donators = {}
     for d in donations:
         name = d.name
         top_donators[name] = top_donators.get(name, 0) + d.amount
-        
     sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
-    
     formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
-    
-    return jsonify(formatted_list)
+    return jsonify({'top_donators_month': formatted_list})
 
 # --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
@@ -574,5 +540,4 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     pass
-
 
