@@ -24,7 +24,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 # --- Конфигурация приложения ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
-# ИЗМЕНЕНИЕ: Используем environment-переменную DATABASE_URL для PostgreSQL
+# КЛЮЧЕВОЙ МОМЕНТ: Используем environment-переменную DATABASE_URL для PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -51,7 +51,6 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    # ИЗМЕНЕНИЕ: trial_end_date удалено
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -204,7 +203,6 @@ def get_full_update_message(user_id):
 
 # --- Декоратор для API ---
 def check_trial_status(user):
-    # ИЗМЕНЕНИЕ: Упрощенная логика проверки статуса после удаления пробного периода
     if user.role == 'admin' or user.status == 'active':
         return True, None
     else:
@@ -274,7 +272,6 @@ def register():
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
                 status='inactive', # Новый статус
-                # ИЗМЕНЕНИЕ: trial_end_date удалено
             )
             db.session.add(new_user)
             db.session.commit()
@@ -291,29 +288,12 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ВРЕМЕННЫЙ МАРШРУТ ДЛЯ УДАЛЕНИЯ АДМИНА
-@app.route('/delete_admin_by_id')
-def delete_admin_by_id():
-    # Находим пользователя с ролью 'admin'
-    admin_user = User.query.filter_by(role='admin').first()
-    if admin_user:
-        # Удаляем пользователя и все связанные с ним данные
-        db.session.delete(admin_user)
-        db.session.commit()
-        flash(f'Администратор "{admin_user.username}" успешно удален.', 'success')
-    else:
-        flash('Аккаунт администратора не найден.', 'error')
-    return redirect(url_for('register'))
-
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # ИЗМЕНЕНИЕ: Удаление логики проверки пробного периода, так как его нет
-    trial_info = None # Больше не используется
-    
+    trial_info = None 
     stats = get_donation_stats(current_user.id)
-    # ИЗМЕНЕНИЕ: Удалена фильтрация по статусу trial
     
     return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
 
@@ -322,7 +302,6 @@ def dashboard():
 def admin_panel():
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    # ИЗМЕНЕНИЕ: Убираем логику trial_days
     users_data = []
     for u in users:
         users_data.append({
@@ -344,7 +323,6 @@ def update_user(user_id):
     else:
         user.role = request.form.get('role')
         user.status = request.form.get('status')
-        # ИЗМЕНЕНИЕ: Удаление логики продления/установки trial_end_date
         db.session.commit()
         flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
@@ -352,8 +330,6 @@ def update_user(user_id):
 @app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
 @login_required
 def extend_trial(user_id):
-    # ИЗМЕНЕНИЕ: Маршрут полностью удален, так как триала больше нет.
-    # Если на него нажмут, вернет на админ-панель
     flash('Пробный период отключен. Используйте статус "active" для активации.', 'warning')
     return redirect(url_for('admin_panel'))
 
@@ -664,8 +640,5 @@ def ws(ws):
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
-        # ВНИМАНИЕ: Для решения ошибки 500 после изменения модели,
-        # мы вынуждены удалить старую базу данных и создать новую.
-        # Это приведет к потере всех пользовательских данных.
-        db.drop_all() 
-        db.create_all()
+        # УДАЛЕНО db.create_all()
+        pass
