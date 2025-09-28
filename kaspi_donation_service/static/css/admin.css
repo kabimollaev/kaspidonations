@@ -10,6 +10,10 @@
     --text-light: #FFFFFF;
     --text-muted: #A0AEC0;
     --border-color: #3a3a3a;
+    --danger-color: #dc3545;
+    --danger-color-hover: #c82333;
+    --error-color: #e53935;
+    --success-color: #4CAF50;
 }
 
 body {
@@ -46,6 +50,7 @@ h1 {
 .user-table th, .user-table td {
     padding: 18px 25px;
     text-align: left;
+    vertical-align: middle;
 }
 
 .user-table thead {
@@ -75,20 +80,33 @@ h1 {
     font-size: 0.9rem;
 }
 
-.btn-update {
+.btn-update, .btn-delete {
     padding: 8px 16px;
     border: none;
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 700;
     cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-update {
     background-color: var(--primary-color);
     color: white;
-    transition: all 0.2s ease;
 }
 
 .btn-update:hover {
     background-color: var(--primary-color-hover);
+    transform: translateY(-2px);
+}
+
+.btn-delete {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.btn-delete:hover {
+    background-color: var(--danger-color-hover);
     transform: translateY(-2px);
 }
 
@@ -99,5 +117,26 @@ h1 {
     color: var(--primary-color);
     text-decoration: none;
     font-weight: 500;
+}
+
+/* Стили для флеш-сообщений */
+.flash-error, .flash-success {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid;
+    text-align: left;
+}
+
+.flash-error {
+    background-color: rgba(229, 57, 53, 0.1);
+    color: var(--error-color);
+    border-color: var(--error-color);
+}
+
+.flash-success {
+    background-color: rgba(76, 175, 80, 0.1);
+    color: var(--success-color);
+    border-color: var(--success-color);
 }
 

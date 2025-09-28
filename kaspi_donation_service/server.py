@@ -280,6 +280,29 @@ def update_user(user_id):
         flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
 
+# НОВЫЙ МАРШРУТ: Для удаления пользователей
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@login_required
+def delete_user(user_id):
+    if current_user.role != 'admin':
+        return redirect(url_for('dashboard'))
+    
+    user_to_delete = db.session.get(User, user_id)
+    
+    if not user_to_delete:
+        flash(f'Пользователь с ID {user_id} не найден.', 'error')
+        return redirect(url_for('admin_panel'))
+    
+    if user_to_delete.id == current_user.id:
+        flash('Вы не можете удалить свой собственный аккаунт.', 'error')
+        return redirect(url_for('admin_panel'))
+        
+    db.session.delete(user_to_delete)
+    db.session.commit()
+    flash(f'Пользователь {user_to_delete.username} был успешно удален.', 'success')
+    
+    return redirect(url_for('admin_panel'))
+
 @app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
 @login_required
 def extend_trial(user_id):
