@@ -8,7 +8,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -89,104 +89,77 @@
 <body>
     <div id="alert-container" class="alert-container"></div>
     <script>
+        // --- Глобальные переменные ---
         let ws;
         let alertQueue = [];
-        let isShowingAlert = false;
+        let isProcessingQueue = false;
         let currentSettings = {};
-        let lastShownAlertId = null;
-
+        
         const alertContainer = document.getElementById('alert-container');
         const ALERT_DURATION = 8000;
-        
-        const imagePreloader = new Image();
-        const mainSoundPlayer = new Audio();
-        let ttsTextQueue = [];
+        const audioPlayer = new Audio();
 
-        // Воспроизводим звук доната и по его завершению - озвучку из очереди
-        mainSoundPlayer.addEventListener('ended', () => {
-            if (ttsTextQueue.length > 0) {
-                const textToSpeak = ttsTextQueue.shift();
-                speakText(textToSpeak);
-            }
-        });
-
-        function speakText(text) {
-            if ('speechSynthesis' in window) {
-                // Отменяем предыдущую озвучку, если она еще не началась
-                window.speechSynthesis.cancel(); 
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ru-RU';
-                utterance.volume = currentSettings.tts_volume || 0.7;
-                window.speechSynthesis.speak(utterance);
-            } else {
-                console.log('Web Speech API не поддерживается в этом браузере.');
-            }
-        }
-        
+        // --- Основная логика ---
         function connectWebSocket() {
             const userId = "{{ user_id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
             
             ws = new WebSocket(wsUrl);
-            
             ws.onopen = () => console.log("WebSocket connected.");
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+            ws.onerror = () => ws.close();
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
                 if (message.type === 'show_alert') {
-                    alertQueue.push(message.data);
+                    alertQueue.push(message);
                     processQueue();
-                } 
-                else if (message.type === 'tts' && message.text) {
-                    // Если основной звук еще играет, озвучка будет воспроизведена по его завершению
-                    if (!mainSoundPlayer.paused) {
-                        ttsTextQueue.push(message.text);
-                    } else {
-                        // Если звука не было или он уже закончился, сразу озвучиваем
-                        speakText(message.text);
-                    }
-                }
-                else if (message.type === 'full_update') {
-                    if (isShowingAlert) return;
+                } else if (message.type === 'full_update' && !isProcessingQueue) {
                     currentSettings = message.data.settings || {};
                     preloadAssets(currentSettings);
                 }
             };
-            
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
-            ws.onerror = (error) => ws.close();
         }
-        
+
         function preloadAssets(settings) {
-            if (settings.alert_url) {
-                imagePreloader.src = `${settings.alert_url}?v=${new Date().getTime()}`;
-            }
+            // Предзагружаем только основной звук, т.к. озвучка генерируется на лету
             if (settings.sound_url) {
-                mainSoundPlayer.src = `${settings.sound_url}?v=${new Date().getTime()}`;
+                audioPlayer.src = `${settings.sound_url}?v=${new Date().getTime()}`;
             }
         }
 
-        function processQueue() {
-            if (isShowingAlert || alertQueue.length === 0) return;
-            isShowingAlert = true;
-            const data = alertQueue.shift();
+        async function processQueue() {
+            if (isProcessingQueue || alertQueue.length === 0) return;
+            isProcessingQueue = true;
+
+            const alertData = alertQueue.shift();
             
-            if (data.id === lastShownAlertId && !String(data.id).startsWith('test_')) {
-                isShowingAlert = false;
-                processQueue();
-                return;
+            // 1. Показываем визуальное оповещение
+            showAlert(alertData.data);
+            
+            // 2. Воспроизводим основной звук
+            await playSound(currentSettings.sound_url, currentSettings.tts_volume);
+            
+            // 3. Воспроизводим озвучку, если она есть
+            if (alertData.tts_text) {
+                await speakText(alertData.tts_text, currentSettings.tts_volume);
             }
-            lastShownAlertId = data.id;
-            showAlert(data);
+
+            // 4. Прячем оповещение после небольшой задержки
+            setTimeout(() => {
+                hideAlert();
+                isProcessingQueue = false;
+                processQueue(); // Проверяем, есть ли еще алерты в очереди
+            }, ALERT_DURATION);
         }
 
+        // --- Функции-помощники ---
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const alertUrl = imagePreloader.src || '/static/media/alert.gif'; 
+            const alertUrl = currentSettings.alert_url || '/static/media/alert.gif';
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -198,37 +171,55 @@
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
                     </div>
                 </div>`;
-            const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим основной звук оповещения
-            if (mainSoundPlayer.src) {
-                mainSoundPlayer.play().catch(e => console.error("Ошибка воспроизведения основного звука:", e));
-            }
-
-            setTimeout(() => alertBox.classList.add('visible'), 50);
-            setTimeout(hideAlert, ALERT_DURATION);
+            setTimeout(() => {
+                const alertBox = alertContainer.querySelector('.alert-box');
+                if (alertBox) alertBox.classList.add('visible');
+            }, 50);
         }
-        
+
         function hideAlert() {
             const alertBox = alertContainer.querySelector('.alert-box');
             if (alertBox) {
                 alertBox.classList.remove('visible');
-                setTimeout(() => {
-                     alertContainer.innerHTML = '';
-                     isShowingAlert = false;
-                     processQueue();
-                }, 500);
-            } else {
-                isShowingAlert = false;
-                processQueue();
+                setTimeout(() => alertContainer.innerHTML = '', 500);
             }
+        }
+
+        function playSound(src, volume) {
+            return new Promise((resolve) => {
+                if (!src) return resolve();
+                audioPlayer.src = src;
+                audioPlayer.volume = volume || 0.7;
+                audioPlayer.play().catch(e => console.error("Ошибка звука:", e));
+                audioPlayer.onended = resolve;
+                audioPlayer.onerror = resolve;
+            });
+        }
+
+        function speakText(text, volume) {
+            return new Promise((resolve) => {
+                if (!text || !('speechSynthesis' in window)) return resolve();
+                
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ru-RU';
+                utterance.volume = volume || 0.7;
+                utterance.onend = resolve;
+                utterance.onerror = (e) => {
+                    console.error("Ошибка озвучки:", e);
+                    resolve();
+                };
+                window.speechSynthesis.speak(utterance);
+            });
         }
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"g, "&quot;").replace(/'/g, "&#039;");
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
         
+        // --- Запуск ---
         connectWebSocket();
     </script>
 </body>

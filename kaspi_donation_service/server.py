@@ -285,6 +285,26 @@ def get_all_data():
     full_update['data']['stats'] = get_donation_stats(user.id)
     return jsonify(full_update['data'])
 
+# УПРОЩЕНИЕ: Общая функция для отправки оповещений
+def send_donation_alert(user, donation):
+    donation_data = {
+        'id': donation.id, 
+        'name': donation.name, 
+        'amount': donation.amount, 
+        'message': donation.message
+    }
+    
+    tts_text = None
+    if user.settings.tts_enabled and float(donation.amount) >= user.settings.min_amount:
+        tts_text = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
+
+    # Отправляем одно-единственное сообщение
+    broadcast_to_user(user.id, {
+        "type": "show_alert",
+        "data": donation_data,
+        "tts_text": tts_text
+    })
+
 @app.route('/api/submit_donation', methods=['POST'])
 @api_login_required
 def submit_donation():
@@ -296,12 +316,9 @@ def submit_donation():
     db.session.add(new_donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
-    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        # Отправляем текст для озвучки на клиент
-        broadcast_to_user(user.id, {"type": "tts", "text": tts_message})
+    
+    send_donation_alert(user, new_donation)
+    
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -338,11 +355,9 @@ def add_manual_donation():
     db.session.add(donation)
     user.goal.current_amount += float(data['amount'])
     db.session.commit()
-    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
-    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-        broadcast_to_user(user.id, {"type": "tts", "text": tts_message})
+    
+    send_donation_alert(user, donation)
+
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -376,22 +391,24 @@ def replay_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
     if not donation or donation.user_id != user.id:
         return jsonify({'error': 'Донат не найден'}), 404
-    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
-    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-    if user.settings.tts_enabled:
-        tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
-        broadcast_to_user(user.id, {"type": "tts", "text": tts_message})
+    
+    send_donation_alert(user, donation)
+
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
 @api_login_required
 def test_donation_api():
     user = g.user
-    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
-    broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
-    if user.settings.tts_enabled:
-        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
-        broadcast_to_user(user.id, {"type": "tts", "text": tts_message})
+    # Создаем временный объект, похожий на `Donation`
+    class MockDonation:
+        id = f"test_{int(time.time())}"
+        name = 'Тестер'
+        amount = 100
+        message = 'Это тестовый донат!'
+    
+    send_donation_alert(user, MockDonation())
+    
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status', methods=['GET'])
