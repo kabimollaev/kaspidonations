@@ -250,14 +250,18 @@ def api_login_required(f):
 # --- Основные маршруты ---
 @app.route('/')
 def index():
-    # Если пользователь авторизован, перенаправляем на дашборд
-    if current_user.is_authenticated: 
-        return redirect(url_for('dashboard'))
-
+    # Если пользователь авторизован, принудительно сбрасываем сессию, чтобы устранить ошибку БД.
+    if current_user.is_authenticated:
+        logout_user()
+        return redirect(url_for('index')) # Редирект на себя для очистки
+    
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Принудительный выход при попытке входа для очистки кэша сессии
+    logout_user()
+
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form.get('username')).first()
         if user and check_password_hash(user.password_hash, request.form.get('password')):
