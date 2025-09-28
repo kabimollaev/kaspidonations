@@ -48,7 +48,6 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
-    # ИСПРАВЛЕНИЕ: Убираем default функцию, которая несовместима с PostgreSQL
     api_key = db.Column(db.String(120), unique=True, nullable=False)
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -69,10 +68,23 @@ class Goal(db.Model):
     target_amount = db.Column(db.Float, nullable=False, default=10000.0)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
+# ИСПРАВЛЕНИЕ: Восстанавливаем старые поля в модели Settings для совместимости с базой данных на Render
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
+    # Возвращенные поля с default значениями
+    tts_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    tts_volume = db.Column(db.Float, nullable=False, default=0.7)
+    alert_preset = db.Column(db.String(50), nullable=False, default='kaspi_default')
+    sound_preset = db.Column(db.String(50), nullable=False, default='default')
+    alert_custom_url = db.Column(db.String(255), nullable=True)
+    sound_custom_url = db.Column(db.String(255), nullable=True)
+    font_family = db.Column(db.String(100), nullable=False, default='Inter')
+    title_color = db.Column(db.String(20), nullable=False, default='#FFFFFF')
+    highlight_color = db.Column(db.String(20), nullable=False, default='#F14635')
+    message_color = db.Column(db.String(20), nullable=False, default='#A0AEC0')
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+
 
 # --- Вспомогательные функции ---
 @login_manager.user_loader
@@ -198,7 +210,6 @@ def register():
             flash('Имя пользователя уже занято.', 'error')
         else:
             hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
-            # ИСПРАВЛЕНИЕ: Генерируем ключ здесь, а не в модели
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
@@ -206,9 +217,8 @@ def register():
                 status='inactive',
             )
             db.session.add(new_user)
-            db.session.commit() # Сначала коммитим пользователя, чтобы получить его ID
+            db.session.commit() 
             
-            # Затем создаем связанные записи
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
