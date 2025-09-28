@@ -8,6 +8,27 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css', v=cache_buster) }}">
+    <style>
+        /* ИСПРАВЛЕНИЕ: Добавляем стили для центрирования кнопок внутри карточек */
+        .pricing-card {
+            display: flex; /* Делаем карточку флекс-контейнером */
+            flex-direction: column; /* Элементы идут сверху вниз */
+            justify-content: space-between; /* Распределяем пространство */
+            text-align: center; /* Центрируем текст внутри карточки */
+            height: 100%; /* Гарантируем одинаковую высоту, если контент разный */
+        }
+        .pricing-card ul {
+            text-align: left; /* Возвращаем чекбоксы влево */
+            margin: 30px auto; /* Центрируем список, если он занимает не всю ширину */
+            max-width: 250px; /* Ограничиваем ширину списка для лучшей читаемости */
+        }
+        /* Центрирование самой кнопки */
+        .btn-block {
+            display: block;
+            width: 90%; /* Кнопка занимает 90% ширины карточки */
+            margin: 0 auto 0; /* Центрируем кнопку по горизонтали */
+        }
+    </style>
 </head>
 <body>
 
