@@ -17,22 +17,24 @@ from datetime import datetime, timedelta
 import gevent
 from functools import wraps
 from sqlalchemy import func
+from pathlib import Path # НОВОЕ: для более безопасного определения пути
 
 # --- Настройка путей ---
-basedir = os.path.abspath(os.path.dirname(__file__))
+basedir = Path(__file__).parent # ИЗМЕНЕНИЕ: более безопасный способ
+TTS_CACHE_DIR = basedir / 'tts_cache'
+STATIC_MEDIA_DIR = basedir / 'static' / 'media'
 
 # --- Конфигурация приложения ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
 # КЛЮЧЕВОЙ МОМЕНТ: Используем environment-переменную DATABASE_URL для PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{basedir / 'instance' / 'database.db'}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Создаем папки при старте, если их нет
-os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
-TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
-os.makedirs(TTS_CACHE_DIR, exist_ok=True)
-os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
+(basedir / 'instance').mkdir(exist_ok=True)
+TTS_CACHE_DIR.mkdir(exist_ok=True)
+STATIC_MEDIA_DIR.mkdir(exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -139,9 +141,9 @@ def cleanup_tts_files():
         try:
             now = datetime.now()
             for filename in os.listdir(TTS_CACHE_DIR):
-                file_path = os.path.join(TTS_CACHE_DIR, filename)
-                if os.path.isfile(file_path):
-                    file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                file_path = TTS_CACHE_DIR / filename
+                if file_path.is_file():
+                    file_mod_time = datetime.fromtimestamp(file_path.stat().st_mtime)
                     if now - file_mod_time > timedelta(minutes=10):
                         os.remove(file_path)
         except Exception as e:
@@ -163,8 +165,8 @@ def tts_task(text, user_id):
     try:
         tts = gTTS(text, lang='ru')
         filename_part = f'tts_{uuid.uuid4()}.mp3'
-        full_path = os.path.join(TTS_CACHE_DIR, filename_part)
-        tts.save(full_path)
+        full_path = TTS_CACHE_DIR / filename_part
+        tts.save(str(full_path))
         print(f"✅ TTS создан: {full_path}")
         # Создаем относительный URL вручную, чтобы избежать ошибки контекста
         tts_url = f"/tts_cache/{filename_part}"
@@ -297,16 +299,15 @@ def logout():
 @login_required
 def dashboard():
     # --- ИСПРАВЛЕНИЕ ОШИБКИ 500: Проверяем и создаем связанные записи ---
-    with app.app_context():
-        user = db.session.get(User, current_user.id)
-        if not user.goal:
-            db.session.add(Goal(user_id=user.id))
-            db.session.commit()
-            print(f"✅ Создана запись Goal для пользователя {user.username}")
-        if not user.settings:
-            db.session.add(Settings(user_id=user.id))
-            db.session.commit()
-            print(f"✅ Создана запись Settings для пользователя {user.username}")
+    user = db.session.get(User, current_user.id)
+    if not user.goal:
+        db.session.add(Goal(user_id=user.id))
+        db.session.commit()
+        print(f"✅ Создана запись Goal для пользователя {user.username}")
+    if not user.settings:
+        db.session.add(Settings(user_id=user.id))
+        db.session.commit()
+        print(f"✅ Создана запись Settings для пользователя {user.username}")
     # ----------------------------------------------------------------------
     
     trial_info = None 
@@ -546,7 +547,7 @@ def get_daily_top_donators():
 @app.route('/alert/<int:user_id>')
 def alert_widget(user_id):
     # Добавляем проверку статуса пользователя для виджетов
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -556,7 +557,7 @@ def alert_widget(user_id):
 
 @app.route('/goal/<int:user_id>')
 def goal_widget(user_id):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -566,7 +567,7 @@ def goal_widget(user_id):
 
 @app.route('/top_donators/<int:user_id>')
 def top_donators_widget(user_id):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -576,7 +577,7 @@ def top_donators_widget(user_id):
 
 @app.route('/top_donators_day/<int:user_id>')
 def top_donators_day_widget(user_id):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -586,7 +587,7 @@ def top_donators_day_widget(user_id):
 
 @app.route('/latest_donations/<int:user_id>')
 def latest_donations_widget(user_id):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -596,7 +597,7 @@ def latest_donations_widget(user_id):
     
 @app.route('/latest_donations_popout/<int:user_id>')
 def latest_donations_popout(user_id):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return "Пользователь не найден", 404
     is_allowed, message = check_trial_status(user)
@@ -610,7 +611,7 @@ def serve_tts_cache(filename):
 
 @app.route('/static/media/<path:filename>')
 def serve_media_files(filename):
-    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
+    return send_from_directory(str(STATIC_MEDIA_DIR), filename)
 
 # --- WebSocket ---
 @sock.route('/ws')
@@ -621,7 +622,7 @@ def ws(ws):
             user_id = current_user.id
         else: return
         
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         ws.close()
         return
@@ -656,6 +657,5 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
-    with app.app_context():
-        # УДАЛЕНО db.create_all()
-        pass
+    # ИЗМЕНЕНИЕ: Удалили with app.app_context():
+    pass
