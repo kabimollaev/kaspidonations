@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', function() {
         addDonationForm: document.getElementById('add-donation-form'),
         goalForm: document.getElementById('goal-form'),
         settingsForm: document.getElementById('settings-form'),
-        // УДАЛЕНО: widgetCustomizationForm
         resetDonationsBtn: document.getElementById('reset-donations-btn'),
         testDonationBtn: document.getElementById('test-donation-btn'),
         donationsList: document.getElementById('donations-list'),
@@ -23,10 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ttsEnabledInput: document.getElementById('tts-enabled'),
         ttsVolumeInput: document.getElementById('tts-volume'),
         apiKeyInput: document.getElementById('api-key-input')
-        // УДАЛЕНО: Поля кастомизации
     };
-
-    let lastPhoneStatus = '';
 
     // --- API запросы ---
     async function fetchApi(endpoint, method = 'GET', body = null) {
@@ -62,16 +58,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Обновление статуса Phone Link ---
     function updatePhoneStatus(status) {
-        // ... (код без изменений)
         if (!elements.phoneStatusIndicator) return;
+        
         const indicator = elements.phoneStatusIndicator;
         const dot = indicator.querySelector('.status-dot');
         const text = indicator.querySelector('.status-text');
+        
         if (!status || status.connected === undefined) {
              dot.className = 'status-dot status-disconnected';
              text.textContent = 'Нет данных';
              return;
         }
+
         if (status.connected) {
             dot.className = 'status-dot status-connected';
             text.textContent = status.message || 'Подключен';
@@ -96,7 +94,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function escapeHtml(unsafe) {
-        // ... (код без изменений)
         if (typeof unsafe !== 'string') return '';
         return unsafe
              .replace(/&/g, "&amp;")
@@ -107,7 +104,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderDonationsList() {
-        // ... (код без изменений)
         const donations = currentData.donations || [];
         const listEl = elements.donationsList;
         if (!listEl) return;
@@ -131,21 +127,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function renderTopDonators() {
-        // ... (код без изменений)
         const donations = currentData.donations || [];
         const listEl = elements.topDonatorsList;
         if (!listEl) return;
+    
         const topDonators = donations.reduce((acc, d) => {
             acc[d.name] = (acc[d.name] || 0) + d.amount;
             return acc;
         }, {});
+    
         const sorted = Object.entries(topDonators)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 10);
+    
         if (sorted.length === 0) {
             listEl.innerHTML = '<p>Донатов пока нет.</p>';
             return;
         }
+    
         listEl.innerHTML = sorted.map(([name, amount], index) => `
             <div class="top-donator-item">
                 <span class="donator-rank">#${index + 1}</span>
@@ -166,27 +165,25 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.minAmountInput) {
             elements.minAmountInput.value = settings.min_amount || 0;
-            elements.ttsEnabledInput.checked = settings.tts_enabled || false;
+            elements.ttsEnabledInput.checked = settings.tts_enabled; // Убрано || false, т.к. сервер всегда должен присылать это поле
             elements.ttsVolumeInput.value = settings.tts_volume || 0.7;
         }
     }
     
     function updateStats() {
-        // ... (код без изменений)
         const stats = currentData.stats || {};
         if (stats) {
-            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today?.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today?.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month?.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month?.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total?.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total?.count || 0} донатов`;
         }
     }
 
     // --- Глобальные функции для кнопок ---
     window.replayDonation = async function(donationId) {
-        // ... (код без изменений)
         const result = await fetchApi(`/api/replay_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
             logToConsole(`🔄 Повторное воспроизведение доната #${donationId}`, 'info');
@@ -194,7 +191,6 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteDonation = async function(donationId) {
-        // ... (код без изменений)
         console.log(`[ACTION] Запрос на удаление доната #${donationId}`); 
         const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
@@ -204,41 +200,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Логирование в консоль ---
     function logToConsole(message, type = 'info') {
-        // ... (код без изменений)
         const consoleEl = elements.consoleOutput;
         if (!consoleEl) return;
+        
         const timestamp = new Date().toLocaleTimeString('ru-RU');
         const logEntry = document.createElement('div');
         logEntry.className = `console-entry console-${type}`;
         logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
         consoleEl.appendChild(logEntry);
-        const entries = consoleEl.querySelectorAll('.console-entry');
-        if (entries.length > 10) {
-            entries[0].remove();
+        
+        if (consoleEl.children.length > 20) {
+            consoleEl.removeChild(consoleEl.children[0]);
         }
+        
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
     // --- WebSocket ---
     function connectWebSocket() {
-        // ... (код без изменений)
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
         ws.onopen = () => {
-            console.log('Соединение с WebSocket установлено.');
             logToConsole('Соединение с WebSocket установлено.', 'success');
         };
+
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             handleWebSocketMessage(message);
         };
+
         ws.onclose = () => {
-            console.log('Соединение с WebSocket закрыто. Попытка переподключения...');
             logToConsole('Соединение с WebSocket закрыто. Попытка переподключения...', 'error');
             setTimeout(connectWebSocket, 3000);
         };
+
         ws.onerror = (error) => {
-            console.error('WebSocket ошибка.', 'error');
             logToConsole('WebSocket ошибка.', 'error');
             ws.close();
         };
@@ -304,8 +301,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
-        // УДАЛЕНО: обработчик для widgetCustomizationForm
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
@@ -319,10 +314,22 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.testDonationBtn) {
             elements.testDonationBtn.addEventListener('click', async () => {
+                const btn = elements.testDonationBtn;
+                if (btn.disabled) return; 
+
+                btn.disabled = true;
+                const originalText = btn.textContent;
+                btn.textContent = 'Отправка...';
+
                 const result = await fetchApi('/test_donation', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole('🧪 Тестовый донат отправлен', 'info');
                 }
+
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }, 5000); // Задержка 5 секунд, чтобы не спамить
             });
         }
     }
@@ -330,6 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Загрузка данных ---
     async function loadData() {
         updatePhoneStatus({ connected: undefined });
+        
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;

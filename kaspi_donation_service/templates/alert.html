@@ -99,55 +99,31 @@
         const ALERT_DURATION = 8000;
         
         const imagePreloader = new Image();
-        
-        // --- ФИНАЛЬНАЯ ВЕРСИЯ: НАДЕЖНАЯ ОЧЕРЕДЬ АУДИО ---
-        const audioQueue = [];
-        let isPlayingAudio = false;
+        const mainSoundPlayer = new Audio();
+        let ttsTextQueue = [];
 
-        // Функция для воспроизведения одного аудиофайла, возвращает Promise
-        function playSound(sound) {
-            return new Promise((resolve, reject) => {
-                const audioPlayer = new Audio(sound.url);
-                audioPlayer.volume = sound.type === 'tts' 
-                    ? (currentSettings.tts_volume || 0.7) 
-                    : 1.0;
-
-                // Успешное завершение
-                audioPlayer.addEventListener('ended', resolve);
-                // Ошибки
-                audioPlayer.addEventListener('error', (e) => {
-                    console.error(`Ошибка воспроизведения ${sound.url}`, e);
-                    reject(e); // Отклоняем Promise, чтобы перейти к следующему треку
-                });
-
-                // Пытаемся запустить воспроизведение
-                audioPlayer.play().catch(e => {
-                     console.error(`Ошибка play() для ${sound.url}`, e);
-                     reject(e);
-                });
-            });
-        }
-
-        // Асинхронный обработчик очереди
-        async function processAudioQueue() {
-            if (isPlayingAudio) return; // Если уже что-то играет, выходим
-            isPlayingAudio = true;
-
-            while (audioQueue.length > 0) {
-                const sound = audioQueue.shift();
-                try {
-                    console.log(`Пробуем воспроизвести: ${sound.url}`);
-                    await playSound(sound);
-                    console.log(`Завершено: ${sound.url}`);
-                } catch (error) {
-                    // Ошибка уже залогирована в playSound, просто продолжаем
-                    console.log("Переход к следующему треку в очереди.");
-                }
+        // Воспроизводим звук доната и по его завершению - озвучку из очереди
+        mainSoundPlayer.addEventListener('ended', () => {
+            if (ttsTextQueue.length > 0) {
+                const textToSpeak = ttsTextQueue.shift();
+                speakText(textToSpeak);
             }
-            isPlayingAudio = false; // Освобождаем очередь
-        }
-        // ---------------------------------------------
+        });
 
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                // Отменяем предыдущую озвучку, если она еще не началась
+                window.speechSynthesis.cancel(); 
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ru-RU';
+                utterance.volume = currentSettings.tts_volume || 0.7;
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.log('Web Speech API не поддерживается в этом браузере.');
+            }
+        }
+        
         function connectWebSocket() {
             const userId = "{{ user_id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -162,15 +138,16 @@
                 
                 if (message.type === 'show_alert') {
                     alertQueue.push(message.data);
-                    if(currentSettings.sound_url) {
-                        audioQueue.push({ url: currentSettings.sound_url, type: 'main' });
-                        processAudioQueue();
-                    }
                     processQueue();
                 } 
-                else if (message.type === 'tts' && message.url) {
-                    audioQueue.push({ url: message.url, type: 'tts' });
-                    processAudioQueue();
+                else if (message.type === 'tts' && message.text) {
+                    // Если основной звук еще играет, озвучка будет воспроизведена по его завершению
+                    if (!mainSoundPlayer.paused) {
+                        ttsTextQueue.push(message.text);
+                    } else {
+                        // Если звука не было или он уже закончился, сразу озвучиваем
+                        speakText(message.text);
+                    }
                 }
                 else if (message.type === 'full_update') {
                     if (isShowingAlert) return;
@@ -188,8 +165,7 @@
                 imagePreloader.src = `${settings.alert_url}?v=${new Date().getTime()}`;
             }
             if (settings.sound_url) {
-                // Просто сохраняем URL, предзагрузка не нужна, т.к. создаем новый Audio() каждый раз
-                currentSettings.sound_url = `${settings.sound_url}?v=${new Date().getTime()}`;
+                mainSoundPlayer.src = `${settings.sound_url}?v=${new Date().getTime()}`;
             }
         }
 
@@ -224,6 +200,11 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
+            // Воспроизводим основной звук оповещения
+            if (mainSoundPlayer.src) {
+                mainSoundPlayer.play().catch(e => console.error("Ошибка воспроизведения основного звука:", e));
+            }
+
             setTimeout(() => alertBox.classList.add('visible'), 50);
             setTimeout(hideAlert, ALERT_DURATION);
         }

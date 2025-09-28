@@ -28,16 +28,14 @@
         </div>
         {% endif %}
 
-        <div class="api-key-section">
-            <h3>Ваш персональный API ключ</h3>
-            <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
-            <p>Этот ключ понадобится для настройки приложения на вашем ПК. **ВАЖНО:** Для озвучки Gemini TTS вам также необходимо установить переменную окружения `GEMINI_API_KEY` на вашем сервере.</p>
-        </div>
-
         <div class="download-agent-section">
             <h3>Приложение для ПК</h3>
             <p>Это приложение необходимо для отслеживания уведомлений с вашего телефона и их мгновенной отправки на стрим.</p>
             <a href="https://drive.google.com/file/d/141_12MNTbJGaUjt11qBWpONaavpblVgW/view?usp=sharing" class="btn btn-primary" target="_blank">Скачать приложение</a>
+             <div class="api-key-section" style="margin-top: 20px;">
+                <h4>Ваш персональный API ключ для приложения</h4>
+                <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
+            </div>
         </div>
         
         <main class="main-grid">
@@ -141,8 +139,6 @@
                         </div>
                     </form>
                 </div>
-                
-                <!-- УДАЛЕНО: Секция кастомизации виджетов -->
             </section>
     
             <aside class="right-column">
@@ -194,7 +190,7 @@
             </aside>
         </main>
     </div>
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js', v=cache_buster) }}"></script>
 </body>
 </html>
 
