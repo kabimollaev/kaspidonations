@@ -75,7 +75,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 24px 30px;
-    margin-bottom: 40px; /* Увеличенный отступ */
+    margin-bottom: 40px;
 }
 
 .api-key-section h3, .download-agent-section h3 {
@@ -100,7 +100,7 @@ body {
     display: grid;
     grid-template-areas: "left main right";
     grid-template-columns: 300px 1fr 400px;
-    gap: 40px; /* Увеличенный отступ */
+    gap: 40px;
     width: 100%;
 }
 
@@ -118,7 +118,7 @@ body {
 }
 
 .card + .card {
-    margin-top: 40px; /* Увеличенный отступ */
+    margin-top: 40px;
 }
 
 .card-header {
@@ -158,7 +158,8 @@ body {
 
 input[type="text"],
 input[type="number"],
-textarea {
+textarea,
+select { /* Добавлено select */
     width: 100%;
     padding: 12px 16px;
     background-color: var(--dark-bg);
@@ -172,7 +173,8 @@ textarea {
 
 input[type="text"]:focus,
 input[type="number"]:focus,
-textarea:focus {
+textarea:focus,
+select:focus { /* Добавлено select */
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 10px rgba(241, 70, 53, 0.2);
@@ -240,7 +242,7 @@ textarea {
 #donations-list {
     display: flex;
     flex-direction: column;
-    gap: 15px; /* ИСПРАВЛЕНИЕ: Добавлен отступ между донатами */
+    gap: 15px;
     max-height: 400px;
     overflow-y: auto;
     padding-right: 10px;
@@ -275,6 +277,36 @@ textarea {
     margin-top: 15px;
     display: flex;
     gap: 10px;
+}
+
+/* --- Статистика --- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 20px;
+}
+.stat-item {
+    background: var(--dark-bg);
+    padding: 15px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+}
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--primary-color);
+}
+.stat-count {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 5px;
 }
 
 /* --- Статус Phone Link --- */
@@ -351,3 +383,22 @@ input[type=range]::-webkit-slider-thumb {
   box-shadow: 0 0 10px rgba(241, 70, 53, 0.5);
 }
 
+/* --- НОВЫЕ СТИЛИ ДЛЯ ДИАГНОСТИКИ --- */
+.diagnostic-card {
+    border: 2px solid var(--warning-color); /* Цвет предупреждения */
+    background-color: #3e331c; /* Темный фон для выделения */
+}
+
+.diagnostic-card .stat-highlight {
+    color: var(--warning-color); /* Яркий цвет для общей суммы */
+    font-weight: 700;
+}
+
+.diagnostic-card .warning-message {
+    padding: 10px;
+    margin-top: 15px;
+    border-radius: 5px;
+    background-color: #8b0000; /* Темно-красный фон */
+    color: #ffffff;
+    font-weight: 500;
+}
