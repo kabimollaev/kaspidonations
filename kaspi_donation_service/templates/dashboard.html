@@ -22,16 +22,9 @@
             </div>
         </header>
 
-<<<<<<< HEAD
         {% if trial_info %}
         <div class="api-key-section" style="background-color: #3f2828; border-color: #dc3545;">
             <p>{{ trial_info }}</p>
-=======
-        {% if status_info %}
-        <!-- ИЗМЕНЕНИЕ: Отображаем статус, если пользователь неактивен -->
-        <div class="api-key-section" style="background-color: #3f2828; border-color: #dc3545;">
-            <p>{{ status_info }}</p>
->>>>>>> b4cc776 (update)
         </div>
         {% endif %}
 
@@ -63,12 +56,11 @@
                             <input type="text" id="goal-url" value="{{ url_for('goal_widget', user_id=user.id, _external=True) }}" readonly>
                         </div>
                         <div class="form-group">
-                            <label for="top-donators-url">Топ донатеров (за все время):</label>
+                            <label for="top-donators-url">Топ донатеров (Все):</label>
                             <input type="text" id="top-donators-url" value="{{ url_for('top_donators_widget', user_id=user.id, _external=True) }}" readonly>
                         </div>
-                         <!-- НОВЫЙ ВИДЖЕТ -->
                         <div class="form-group">
-                            <label for="top-donators-day-url">Топ донатов (за день):</label>
+                            <label for="top-donators-day-url">Топ донатеров (День):</label>
                             <input type="text" id="top-donators-day-url" value="{{ url_for('top_donators_day_widget', user_id=user.id, _external=True) }}" readonly>
                         </div>
                         <div class="form-group">
@@ -139,14 +131,8 @@
                             <input type="number" id="min-amount" name="min-amount" step="0.01">
                         </div>
                          <div class="form-group checkbox-group">
-<<<<<<< HEAD
-                            <input type="checkbox" id="tts-enabled" name="tts-enabled" class="styled-checkbox" disabled>
-=======
-                            <!-- ИЗМЕНЕНО: Удален disabled -->
                             <input type="checkbox" id="tts-enabled" name="tts-enabled" class="styled-checkbox">
->>>>>>> b4cc776 (update)
                             <label for="tts-enabled" class="checkbox-label">Включить озвучивание (TTS)</label>
-                            <span style="color: var(--text-muted); font-size: 0.9rem; margin-left: 10px;">(Временно отключено)</span>
                         </div>
                         <div class="form-group">
                             <label for="tts-volume">Громкость (0.1 - 1.0)</label>
@@ -203,7 +189,7 @@
                                 {% for key, value in SOUND_PRESETS.items() %}
                                 <option value="{{ key }}" {% if key == user.settings.sound_preset %}selected{% endif %}>{{ value.name }}</option>
                                 {% endfor %}
-                                <option value="custom" {% if user.settings.sound_preset not in SOUND_PRESETS %}selected{% endif %}>Свой звук</option>
+                                <option value="custom" {% if user.settings.sound_preset != 'custom' %}selected{% endif %}>Свой звук</option>
                             </select>
                             <input type="url" id="sound-custom-url" name="sound-custom-url" placeholder="URL вашего звука (.mp3)" value="{{ user.settings.sound_custom_url or '' }}" style="margin-top: 10px; {% if user.settings.sound_preset != 'custom' %}display: none;{% endif %}">
                         </div>
@@ -267,4 +253,4 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
-
+{% endif %}
