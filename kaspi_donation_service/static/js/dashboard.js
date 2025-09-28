@@ -41,12 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
             method,
             headers: { 
                 'Content-Type': 'application/json',
-<<<<<<< HEAD
-                'X-API-Key': elements.apiKeyInput.value
-=======
                 // Использование API Key для всех запросов
                 'X-API-Key': elements.apiKeyInput ? elements.apiKeyInput.value : '' 
->>>>>>> b4cc776 (update)
             },
         };
         if (body) {
@@ -80,15 +76,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const dot = indicator.querySelector('.status-dot');
         const text = indicator.querySelector('.status-text');
         
-        if (status && status.connected) {
+        // Если статус не пришел или не содержит connected, устанавливаем "Нет данных"
+        if (!status || status.connected === undefined) {
+             dot.className = 'status-dot status-disconnected';
+             text.textContent = 'Нет данных';
+             return;
+        }
+
+        if (status.connected) {
             dot.className = 'status-dot status-connected';
             text.textContent = status.message || 'Подключен';
-        } else if (status) {
-            dot.className = 'status-dot status-disconnected';
-            text.textContent = status.message || 'Отключен';
         } else {
             dot.className = 'status-dot status-disconnected';
-            text.textContent = 'Нет данных';
+            text.textContent = status.message || 'Отключен';
         }
     }
 
@@ -99,8 +99,12 @@ document.addEventListener('DOMContentLoaded', function() {
         renderTopDonators();
         updateForms();
         updateStats();
+        // ВАЖНО: Обновление статуса телефона происходит здесь
         if (currentData.phone_status) {
             updatePhoneStatus(currentData.phone_status);
+        } else {
+             // Если phone_status не пришел в initial load, показываем, что нет данных
+             updatePhoneStatus({ connected: undefined });
         }
     }
 
@@ -226,20 +230,12 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteDonation = async function(donationId) {
-<<<<<<< HEAD
-        if (confirm('Удалить этот донат?')) {
-            const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
-            if (result && result.status === 'success') {
-                logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
-            }
-=======
         // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
         // В реальном приложении здесь должен быть кастомный модал
         console.log(`[ACTION] Запрос на удаление доната #${donationId}`); 
         const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
         if (result && result.status === 'success') {
             logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
->>>>>>> b4cc776 (update)
         }
     };
 
@@ -298,7 +294,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (message.type === 'phone_status_update') {
             // ИЗМЕНЕНИЕ: Только обновляем индикатор, без спама в консоль
             updatePhoneStatus(message.data);
-            // Строка logToConsole удалена
         } else if (message.type === 'show_alert') {
             logToConsole(`📢 Новый донат: ${message.data.name} - ${message.data.amount}₸`, 'success');
             // Обновляем данные, чтобы список донатов сразу обновился
@@ -369,19 +364,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
-<<<<<<< HEAD
-                if (confirm('Вы уверены, что хотите сбросить всю историю донатов и обнулить счетчик сбора? Это действие необратимо.')) {
-                    const result = await fetchApi('/reset_donations', 'POST');
-                    if (result && result.status === 'success') {
-                        logToConsole(`🗑️ История донатов сброшена`, 'warning');
-                    }
-=======
                 // ИЗМЕНЕНИЕ: Убран window.confirm, заменено на console.log (для демонстрации)
                 console.log('[ACTION] Запрос на сброс истории донатов.');
                 const result = await fetchApi('/reset_donations', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole(`🗑️ История донатов сброшена`, 'warning');
->>>>>>> b4cc776 (update)
                 }
             });
         }
@@ -419,6 +406,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Загрузка данных ---
     async function loadData() {
+        // Устанавливаем начальный статус "Нет данных" перед запросом
+        updatePhoneStatus({ connected: undefined });
+        
         const data = await fetchApi('/get_all_data');
         if (data) {
             currentData = data;
