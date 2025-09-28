@@ -100,39 +100,51 @@
         
         const imagePreloader = new Image();
         
-        // --- ФИНАЛЬНАЯ ВЕРСИЯ: ЕДИНАЯ ОЧЕРЕДЬ АУДИО ---
-        const audioPlayer = new Audio();
-        let audioQueue = []; // { url: '...', type: 'main' | 'tts' }
+        // --- ФИНАЛЬНАЯ ВЕРСИЯ: НАДЕЖНАЯ ОЧЕРЕДЬ АУДИО ---
+        const audioQueue = [];
+        let isPlayingAudio = false;
 
-        audioPlayer.addEventListener('ended', () => {
-            // Когда звук заканчивается, просто пытаемся запустить следующий
-            processAudioQueue();
-        });
-         audioPlayer.addEventListener('error', () => {
-            console.error("Ошибка при воспроизведении аудио. Запускаем следующий трек.");
-            // Если файл не загрузился/не воспроизвелся, пропускаем его и идем дальше
-            processAudioQueue();
-        });
-
-        function processAudioQueue() {
-            if (audioPlayer.paused && audioQueue.length > 0) {
-                const sound = audioQueue.shift();
-                console.log(`Воспроизведение из очереди: ${sound.url}`);
-                
-                audioPlayer.src = sound.url;
+        // Функция для воспроизведения одного аудиофайла, возвращает Promise
+        function playSound(sound) {
+            return new Promise((resolve, reject) => {
+                const audioPlayer = new Audio(sound.url);
                 audioPlayer.volume = sound.type === 'tts' 
                     ? (currentSettings.tts_volume || 0.7) 
                     : 1.0;
-                
-                const playPromise = audioPlayer.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        console.error(`Ошибка play() для ${sound.url}:`, error);
-                        // Если play() не сработал, все равно пытаемся обработать остальную часть очереди
-                        processAudioQueue();
-                    });
+
+                // Успешное завершение
+                audioPlayer.addEventListener('ended', resolve);
+                // Ошибки
+                audioPlayer.addEventListener('error', (e) => {
+                    console.error(`Ошибка воспроизведения ${sound.url}`, e);
+                    reject(e); // Отклоняем Promise, чтобы перейти к следующему треку
+                });
+
+                // Пытаемся запустить воспроизведение
+                audioPlayer.play().catch(e => {
+                     console.error(`Ошибка play() для ${sound.url}`, e);
+                     reject(e);
+                });
+            });
+        }
+
+        // Асинхронный обработчик очереди
+        async function processAudioQueue() {
+            if (isPlayingAudio) return; // Если уже что-то играет, выходим
+            isPlayingAudio = true;
+
+            while (audioQueue.length > 0) {
+                const sound = audioQueue.shift();
+                try {
+                    console.log(`Пробуем воспроизвести: ${sound.url}`);
+                    await playSound(sound);
+                    console.log(`Завершено: ${sound.url}`);
+                } catch (error) {
+                    // Ошибка уже залогирована в playSound, просто продолжаем
+                    console.log("Переход к следующему треку в очереди.");
                 }
             }
+            isPlayingAudio = false; // Освобождаем очередь
         }
         // ---------------------------------------------
 
@@ -143,25 +155,22 @@
             
             ws = new WebSocket(wsUrl);
             
-            ws.onopen = () => console.log("WebSocket connected. Ready for alerts.");
+            ws.onopen = () => console.log("WebSocket connected.");
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
                 if (message.type === 'show_alert') {
                     alertQueue.push(message.data);
-                    // Добавляем основной звук в очередь
                     if(currentSettings.sound_url) {
                         audioQueue.push({ url: currentSettings.sound_url, type: 'main' });
+                        processAudioQueue();
                     }
-                    processAudioQueue(); // Запускаем обработку очереди
                     processQueue();
                 } 
                 else if (message.type === 'tts' && message.url) {
-                    // Добавляем TTS в очередь
-                    console.log(`Озвучка добавлена в очередь: ${message.url}`);
                     audioQueue.push({ url: message.url, type: 'tts' });
-                    processAudioQueue(); // Запускаем обработку очереди
+                    processAudioQueue();
                 }
                 else if (message.type === 'full_update') {
                     if (isShowingAlert) return;
@@ -178,8 +187,8 @@
             if (settings.alert_url) {
                 imagePreloader.src = `${settings.alert_url}?v=${new Date().getTime()}`;
             }
-            // Просто сохраняем URL для последующего использования
             if (settings.sound_url) {
+                // Просто сохраняем URL, предзагрузка не нужна, т.к. создаем новый Audio() каждый раз
                 currentSettings.sound_url = `${settings.sound_url}?v=${new Date().getTime()}`;
             }
         }
