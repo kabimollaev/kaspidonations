@@ -1,655 +1,680 @@
-import json
+# --- ИСПРАВЛЕНИЕ ДЛЯ СОВМЕСТИМОСТИ С GEVENT ---
+from gevent import monkey
+monkey.patch_all()
+
+import time
+import uuid
 import os
-import secrets
-from datetime import datetime, timedelta, timezone
-from functools import wraps
-
-import phonenumbers
-import requests
-from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   session, url_for)
-from flask_login import (LoginManager, current_user, login_required, login_user,
-                         logout_user)
+import json
+import webbrowser
+from flask import Flask, render_template, request, redirect, url_for, flash, g, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from jinja2 import Environment, FileSystemLoader
-from sqlalchemy import func, or_
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_sock import Sock
+from gtts import gTTS
+from datetime import datetime, timedelta
+import gevent
+from functools import wraps
+from sqlalchemy import func
 
-# Инициализация приложения
-app = Flask(__name__, static_url_path='/static', static_folder='static')
+# --- Настройка путей ---
+basedir = os.path.abspath(os.path.dirname(__file__))
 
-# Настройка секретного ключа
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-
-# Настройка базы данных
-# Use the environment variable, or fall back to a local path (for development)
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL is None:
-    # If DATABASE_URL is not set, use a local SQLite database for local development
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'site.db')
-    app.logger.warning("Using local SQLite database. Set DATABASE_URL for production.")
-elif DATABASE_URL.startswith("postgres://"):
-    # Convert 'postgres://' to 'postgresql://' for SQLAlchemy 
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-    
+# --- Конфигурация приложения ---
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key_12345')
+# ИЗМЕНЕНИЕ: Используем environment-переменную DATABASE_URL для PostgreSQL
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(basedir, 'instance', 'database.db')}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Создаем папки при старте, если их нет
+# ИЗМЕНЕНИЕ: Используем os.path.join
+os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
+TTS_CACHE_DIR = os.path.join(basedir, 'tts_cache')
+os.makedirs(TTS_CACHE_DIR, exist_ok=True)
+os.makedirs(os.path.join(basedir, 'static', 'media'), exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+sock = Sock(app)
 
-# Увеличение кэш-бастера для статических файлов
-cache_buster = int(datetime.now().timestamp())
+# Хранилище для WebSocket клиентов и статуса Phone Link
+clients = {}
+PHONE_STATUS = {}
 
-# Настройки оповещений и звуков
-ALERT_PRESETS = {
-    'default': {'name': 'Default GIF', 'url': url_for('static', filename='media/alert.gif', v=cache_buster)},
-    'money': {'name': 'Money GIF', 'url': 'https://media.giphy.com/media/l4pTsh4PFRzVf0l7tv/giphy.gif'},
-    'cat': {'name': 'Cat GIF', 'url': 'https://media.giphy.com/media/JTVRBPxJ3xG3C/giphy.gif'},
-    'explosion': {'name': 'Explosion GIF', 'url': 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMTA4ZGlrOWZpZmszNjV4MnRrdjJzZWVqOGU3M3g3YTh0Y3Q2NWZhbCZlcD12MV9pbnRlcm5hbF9naWYmY3Q9Zw/3osxYfV1JgGv7tQhG0/giphy.gif'},
-}
-
-SOUND_PRESETS = {
-    'default': {'name': 'Default MP3', 'url': url_for('static', filename='media/alert.mp3', v=cache_buster)},
-    'coin': {'name': 'Coin Sound', 'url': 'https://cdn.pixabay.com/audio/2022/03/10/audio_f55152ccac.mp3'},
-    'bell': {'name': 'Bell Sound', 'url': 'https://cdn.pixabay.com/audio/2022/03/10/audio_33a010d80c.mp3'},
-}
-
-# Определение моделей
-class User(db.Model):
+# --- Модели Базы Данных ---
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(20), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    api_key = db.Column(db.String(64), unique=True, nullable=False)
-    role = db.Column(db.String(10), default='user')  # 'user' or 'admin'
-    status = db.Column(db.String(10), default='active') # 'active' or 'inactive'
-    
-    # Связи
-    donations = db.relationship('Donation', backref='donor', lazy=True)
-    settings = db.relationship('Settings', backref='owner', uselist=False, lazy=True)
-    goal = db.relationship('Goal', backref='goal_owner', uselist=False, lazy=True)
-
-    def __init__(self, **kwargs):
-        super(User, self).__init__(**kwargs)
-        if self.api_key is None:
-            self.api_key = secrets.token_urlsafe(32)
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-    
-    def is_active(self):
-        return self.status == 'active'
-
-    def get_id(self):
-        return str(self.id)
-
-    def is_authenticated(self):
-        return True
-
-    def is_anonymous(self):
-        return False
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='user')
+    status = db.Column(db.String(20), nullable=False, default='inactive')
+    api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    # ВОЗВРАТ trial_end_date для соответствия схеме PostgreSQL на Render.com
+    trial_end_date = db.Column(db.DateTime, nullable=True) 
+    donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
+    goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
+    settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
 
 class Donation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    name = db.Column(db.String(100), default='Аноним')
+    name = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    message = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    is_read = db.Column(db.Boolean, default=False)
-    
-    # Поля для статистики
-    date = db.Column(db.Date, default=datetime.now(timezone.utc).date()) # Для удобства агрегации
+    message = db.Column(db.Text, nullable=True)
+    timestamp = db.Column(db.DateTime, server_default=db.func.now())
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class Goal(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False, default='На новую цель')
+    current_amount = db.Column(db.Float, nullable=False, default=0.0)
+    target_amount = db.Column(db.Float, nullable=False, default=10000.0)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
-    min_amount = db.Column(db.Float, default=100.0)
-    tts_enabled = db.Column(db.Boolean, default=False)
-    tts_volume = db.Column(db.Float, default=0.7)
-    
-    # Настройки кастомизации
-    font_family = db.Column(db.String(50), default='Inter')
-    title_color = db.Column(db.String(7), default='#ffffff')
-    highlight_color = db.Column(db.String(7), default='#ffcc00')
-    message_color = db.Column(db.String(7), default='#ffffff')
-    alert_preset = db.Column(db.String(50), default='default')
+    min_amount = db.Column(db.Float, nullable=False, default=100.0)
+    tts_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    tts_volume = db.Column(db.Float, nullable=False, default=0.7)
+    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ВИДЖЕТОВ
+    alert_preset = db.Column(db.String(50), nullable=False, default='kaspi_default')
+    sound_preset = db.Column(db.String(50), nullable=False, default='default')
     alert_custom_url = db.Column(db.String(255), nullable=True)
-    sound_preset = db.Column(db.String(50), default='default')
     sound_custom_url = db.Column(db.String(255), nullable=True)
-    
-class Goal(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
-    title = db.Column(db.String(100), default='Сбор на новую камеру')
-    target_amount = db.Column(db.Float, default=10000.0)
+    # НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ ТЕКСТА
+    font_family = db.Column(db.String(100), nullable=False, default='Inter')
+    title_color = db.Column(db.String(20), nullable=False, default='#FFFFFF')
+    highlight_color = db.Column(db.String(20), nullable=False, default='#F14635')
+    message_color = db.Column(db.String(20), nullable=False, default='#A0AEC0')
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
-# Функции-помощники
-def admin_required(f):
+
+# Константы для готовых пресетов
+ALERT_PRESETS = {
+    'kaspi_default': {'name': 'Kaspi (по умолчанию)', 'url': '/static/media/alert.gif'},
+    'money_stack': {'name': 'Пачка денег', 'url': 'https://media.giphy.com/media/l4pTsh45Dg7mwfLgA/giphy.gif'},
+    'cheering_crowd': {'name': 'Аплодирующая толпа', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
+    'fire_animation': {'name': 'Анимация огня', 'url': 'https://media.giphy.com/media/l4pT4f1B6lM4sT6tO/giphy.gif'},
+    'gold_explosion': {'name': 'Взрыв золота', 'url': 'https://media.giphy.com/media/3o7aCWJavAgtNEpblK/giphy.gif'},
+}
+
+SOUND_PRESETS = {
+    'default': {'name': 'Классический звук', 'url': '/static/media/alert.mp3'},
+    'cash_register': {'name': 'Кассовый аппарат', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+    'fanfare': {'name': 'Фанфары', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'},
+}
+
+# --- Вспомогательные функции ---
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+@app.context_processor
+def inject_cache_buster():
+    return dict(cache_buster=int(time.time()))
+
+def get_donation_stats(user_id):
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    total_donations_count = Donation.query.filter_by(user_id=user_id).count()
+    total_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).scalar() or 0
+    
+    today_donations_count = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= today_start).count()
+    today_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).filter(Donation.timestamp >= today_start).scalar() or 0
+    
+    month_donations_count = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).count()
+    month_donations_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).filter(Donation.timestamp >= month_start).scalar() or 0
+    
+    # --- Диагностика: Общая сумма по всем пользователям ---
+    try:
+        global_total_sum = db.session.query(func.sum(Donation.amount)).scalar() or 0
+    except Exception:
+        # Возвращаем -1.0, если запрос не удался (например, таблица Donation пуста или ошибка соединения)
+        global_total_sum = -1.0
+    # ----------------------------------------------------
+    
+    return {
+        'total': {'count': total_donations_count, 'sum': total_donations_sum},
+        'today': {'count': today_donations_count, 'sum': today_donations_sum},
+        'month': {'count': month_donations_count, 'sum': month_donations_sum},
+        'global_total_sum': global_total_sum
+    }
+
+# --- Фоновые задачи ---
+def cleanup_tts_files():
+    while True:
+        try:
+            now = datetime.now()
+            for filename in os.listdir(TTS_CACHE_DIR):
+                file_path = os.path.join(TTS_CACHE_DIR, filename)
+                if os.path.isfile(file_path):
+                    file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if now - file_mod_time > timedelta(minutes=10):
+                        os.remove(file_path)
+        except Exception as e:
+            print(f"❌ Ошибка при очистке TTS кэша: {e}")
+        gevent.sleep(60 * 15)
+
+# --- Функции для Real-time обновлений ---
+def broadcast_to_user(user_id, message_data):
+    if user_id in clients:
+        message_str = json.dumps(message_data, ensure_ascii=False)
+        for ws in list(clients[user_id]):
+            try:
+                ws.send(message_str)
+            except Exception:
+                clients[user_id].remove(ws)
+
+def tts_task(text, user_id):
+    # ИСПРАВЛЕНИЕ: Эта функция теперь не требует контекста приложения
+    try:
+        tts = gTTS(text, lang='ru')
+        filename_part = f'tts_{uuid.uuid4()}.mp3'
+        full_path = os.path.join(TTS_CACHE_DIR, filename_part)
+        tts.save(full_path)
+        print(f"✅ TTS создан: {full_path}")
+        # Создаем относительный URL вручную, чтобы избежать ошибки контекста
+        tts_url = f"/tts_cache/{filename_part}"
+        broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
+    except Exception as e:
+        print(f"❌ Ошибка создания TTS: {e}")
+
+def get_full_update_message(user_id):
+    # ВАЖНО: Мы находимся внутри контекста приложения
+    user = db.session.get(User, user_id)
+    if not user: return {}
+    
+    donations = user.donations.order_by(Donation.timestamp.desc()).all()
+    goal = user.goal
+    settings = user.settings
+
+    donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
+    goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
+    settings_data = {
+        'min_amount': settings.min_amount,
+        'tts_enabled': settings.tts_enabled,
+        'tts_volume': settings.tts_volume,
+        'alert_preset': settings.alert_preset,
+        'sound_preset': settings.sound_preset,
+        'alert_custom_url': settings.alert_custom_url,
+        'sound_custom_url': settings.sound_custom_url,
+        'alert_url': ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset != 'custom' else settings.alert_custom_url,
+        'sound_url': SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset != 'custom' else settings.sound_custom_url,
+        # НОВЫЕ ПОЛЯ
+        'font_family': settings.font_family,
+        'title_color': settings.title_color,
+        'highlight_color': settings.highlight_color,
+        'message_color': settings.message_color,
+    } if settings else {}
+    phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
+
+    return {"type": "full_update", "data": {"donations": donations_list, "goal": goal_data, "settings": settings_data, "phone_status": phone_status_data}}
+
+# --- Декоратор для API ---
+def check_trial_status(user):
+    # Логика платной подписки: статус должен быть 'active'
+    if user.role == 'admin' or user.status == 'active':
+        return True, None
+    
+    # Если статус не 'active' и не 'admin', доступ запрещен
+    return False, 'Аккаунт неактивен. Для продолжения работы требуется оплата.'
+
+
+def api_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'admin':
-            abort(403)
+        user = None
+        # Проверка по сессии (для браузера)
+        if current_user.is_authenticated:
+            user = current_user
+        else:
+            # Проверка по API-ключу (для приложения на ПК)
+            api_key = request.headers.get('X-API-Key')
+            if not api_key:
+                return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
+            user = User.query.filter_by(api_key=api_key).first()
+            if not user:
+                return jsonify({'error': 'Неверный API-ключ.'}), 403
+        
+        is_allowed, message = check_trial_status(user)
+        if not is_allowed:
+            return jsonify({'error': message}), 403
+
+        g.user = user
         return f(*args, **kwargs)
     return decorated_function
 
-def calculate_stats(user_id):
-    """Рассчитывает статистику донатов для конкретного пользователя."""
-    today = datetime.now(timezone.utc).date()
-    start_of_month = today.replace(day=1)
-    
-    # Суммы
-    total_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).scalar() or 0.0
-    today_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id, date=today).scalar() or 0.0
-    month_sum = db.session.query(func.sum(Donation.amount)).filter(
-        Donation.user_id == user_id,
-        Donation.date >= start_of_month
-    ).scalar() or 0.0
-    
-    # Количество
-    total_count = db.session.query(Donation).filter_by(user_id=user_id).count()
-    today_count = db.session.query(Donation).filter_by(user_id=user_id, date=today).count()
-    month_count = db.session.query(Donation).filter(
-        Donation.user_id == user_id,
-        Donation.date >= start_of_month
-    ).count()
-
-    return {
-        'total': {'sum': total_sum, 'count': total_count},
-        'today': {'sum': today_sum, 'count': today_count},
-        'month': {'sum': month_sum, 'count': month_count}
-    }
-
-# Flask-Login
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-# Маршруты
-@app.before_first_request
-def create_db():
-    db.create_all()
-
+# --- Основные маршруты ---
 @app.route('/')
 def index():
-    return render_template('index.html', cache_buster=cache_buster)
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if current_user.is_authenticated:
+    # Если пользователь авторизован, перенаправляем на дашборд
+    if current_user.is_authenticated: 
         return redirect(url_for('dashboard'))
 
-    form_data = session.pop('register_form_data', {})
-    error = session.pop('register_error', None)
-    
-    if request.method == 'POST':
-        # Сброс сессии перед обработкой, чтобы избежать конфликтов
-        logout_user() 
-        session.clear()
-
-        username = request.form.get('username')
-        password = request.form.get('password')
-        phone = request.form.get('phone') # Не используется, но собирается для формы
-
-        session['register_form_data'] = request.form
-
-        if not username or not password:
-            session['register_error'] = 'Имя пользователя и пароль обязательны.'
-            return redirect(url_for('register'))
-
-        if User.query.filter_by(username=username).first():
-            session['register_error'] = 'Имя пользователя уже занято.'
-            return redirect(url_for('register'))
-
-        try:
-            new_user = User(username=username)
-            new_user.set_password(password)
-            
-            db.session.add(new_user)
-            db.session.commit()
-            
-            # Инициализация настроек и цели
-            new_settings = Settings(user_id=new_user.id)
-            new_goal = Goal(user_id=new_user.id)
-            db.session.add(new_settings)
-            db.session.add(new_goal)
-            db.session.commit()
-            
-            login_user(new_user)
-            return redirect(url_for('dashboard'))
-
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f"Registration failed: {e}")
-            session['register_error'] = 'Произошла ошибка при регистрации.'
-            return redirect(url_for('register'))
-
-    return render_template('register.html', error=error, form_data=form_data, cache_buster=cache_buster)
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    error = session.pop('login_error', None)
-    
     if request.method == 'POST':
-        # Сброс сессии перед обработкой, чтобы избежать конфликтов
-        logout_user() 
-        session.clear()
-
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        user = User.query.filter_by(username=username).first()
-
-        if user and user.check_password(password):
-            if user.status == 'inactive':
-                session['login_error'] = 'Ваш аккаунт не активен. Обратитесь к администратору.'
-                return redirect(url_for('login'))
-            
-            login_user(user)
-            return redirect(url_for('dashboard'))
+        user = User.query.filter_by(username=request.form.get('username')).first()
+        if user and check_password_hash(user.password_hash, request.form.get('password')):
+            is_allowed, message = check_trial_status(user)
+            if is_allowed:
+                login_user(user, remember=True)
+                return redirect(url_for('dashboard'))
+            else:
+                flash(message, 'error')
+                return redirect(url_for('login')) # Остаемся на странице логина
         else:
-            session['login_error'] = 'Неверное имя пользователя или пароль.'
+            flash('Неверный логин или пароль.', 'error')
+    
+    # Если GET запрос или неверный POST, показываем форму входа
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated: return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        if User.query.filter_by(username=request.form.get('username')).first():
+            flash('Имя пользователя уже занято.', 'error')
+        else:
+            hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
+            new_user = User(
+                username=request.form.get('username'),
+                password_hash=hashed_pw,
+                status='inactive', # НОВЫЙ СТАТУС: По умолчанию неактивен
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            db.session.add(Goal(user_id=new_user.id))
+            db.session.add(Settings(user_id=new_user.id))
+            db.session.commit()
+            flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором после оплаты.', 'success')
             return redirect(url_for('login'))
-
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-
-    return render_template('login.html', error=error, cache_buster=cache_buster)
+    return render_template('register.html')
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    session.clear() # Полная очистка сессии
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
+
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Проверка на наличие настроек/цели, если они не инициализировались (например, после db.drop_all)
-    if not current_user.settings:
-        new_settings = Settings(user_id=current_user.id)
-        db.session.add(new_settings)
-        db.session.commit()
-        
+    # --- ГАРАНТИРОВАННОЕ СОЗДАНИЕ GOAL/SETTINGS ---
+    # Этот блок нужен для старых аккаунтов, где Goal/Settings могли быть удалены
+    # (Например, после db.drop_all())
     if not current_user.goal:
-        new_goal = Goal(user_id=current_user.id)
-        db.session.add(new_goal)
+        db.session.add(Goal(user_id=current_user.id))
         db.session.commit()
-        
-    # --- НАЧАЛО ДИАГНОСТИКИ: Получение глобальной статистики ---
-    # Мы получим общую сумму всех донатов в базе данных, чтобы сравнить ее с суммой пользователя.
-    try:
-        global_total_sum = db.session.query(func.sum(Donation.amount)).scalar()
-        if global_total_sum is None:
-            global_total_sum = 0.0
-    except Exception as e:
-        app.logger.error(f"Error calculating global total sum: {e}")
-        global_total_sum = -1.0 # Индикатор ошибки
-    
-    # Получение статистики только для текущего пользователя (стандартная логика)
-    stats = calculate_stats(current_user.id)
-    
-    # Добавление глобальной суммы в stats для удобства передачи в шаблон
-    stats['global_total_sum'] = global_total_sum
-    # --- КОНЕЦ ДИАГНОСТИКИ ---
-    
+    if not current_user.settings:
+        db.session.add(Settings(user_id=current_user.id))
+        db.session.commit()
+    # -----------------------------------------------
+
     trial_info = None # Убрали логику триала
     
-    return render_template('dashboard.html', user=current_user, trial_info=trial_info, 
-                           stats=stats, # stats теперь содержит 'global_total_sum'
-                           ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS,
-                           cache_buster=cache_buster)
-
-@app.route('/api/v1/ping', methods=['GET'])
-def api_ping():
-    api_key = request.args.get('api_key')
-    user = User.query.filter_by(api_key=api_key).first()
+    stats = get_donation_stats(current_user.id)
     
-    if user:
-        return jsonify({'status': 'ok', 'user_id': user.id}), 200
-    else:
-        return jsonify({'status': 'error', 'message': 'Invalid API Key'}), 401
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
 
-@app.route('/api/v1/update_status', methods=['POST'])
-def update_status():
-    data = request.json
-    api_key = data.get('api_key')
-    new_status = data.get('status')
-    
-    user = User.query.filter_by(api_key=api_key).first()
-    
-    if user and new_status in ['connected', 'disconnected']:
-        # Временная логика для простого индикатора
-        if new_status == 'connected':
-             # Обновляем статус в сессии или используем кэш
-             # Здесь мы просто возвращаем 'ok' для агента
-             return jsonify({'status': 'ok'}), 200
-        elif new_status == 'disconnected':
-            # Здесь мы просто возвращаем 'ok' для агента
-            return jsonify({'status': 'ok'}), 200
-    
-    return jsonify({'status': 'error', 'message': 'Invalid API Key or status'}), 400
-
-@app.route('/api/v1/donation', methods=['POST'])
-def api_donation():
-    data = request.json
-    api_key = data.get('api_key')
-    name = data.get('name', 'Аноним')
-    amount = data.get('amount')
-    message = data.get('message', '')
-
-    user = User.query.filter_by(api_key=api_key).first()
-
-    if not user:
-        return jsonify({'status': 'error', 'message': 'Invalid API Key'}), 401
-    
-    if user.status == 'inactive':
-        return jsonify({'status': 'error', 'message': 'Account is inactive'}), 403
-
-    try:
-        amount = float(amount)
-        if amount <= 0:
-            return jsonify({'status': 'error', 'message': 'Amount must be positive'}), 400
-    except ValueError:
-        return jsonify({'status': 'error', 'message': 'Invalid amount format'}), 400
-
-    try:
-        new_donation = Donation(
-            user_id=user.id,
-            name=name,
-            amount=amount,
-            message=message,
-            timestamp=datetime.now(timezone.utc),
-            date=datetime.now(timezone.utc).date()
-        )
-        
-        db.session.add(new_donation)
-        db.session.commit()
-        
-        return jsonify({'status': 'success', 'donation_id': new_donation.id}), 200
-    
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Donation failed: {e}")
-        return jsonify({'status': 'error', 'message': 'Database error'}), 500
-
-@app.route('/api/v1/settings/<int:user_id>', methods=['GET', 'POST'])
+@app.route('/admin')
 @login_required
-def settings_api(user_id):
-    if user_id != current_user.id:
-        abort(403)
-        
-    settings = Settings.query.filter_by(user_id=user_id).first()
-    
-    if request.method == 'GET':
-        if not settings:
-            return jsonify({'error': 'Settings not found'}), 404
-            
-        # Формирование URL для пресетов
-        alert_url = ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset in ALERT_PRESETS else settings.alert_custom_url
-        sound_url = SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset in SOUND_PRESETS else settings.sound_custom_url
-
-        return jsonify({
-            'min_amount': settings.min_amount,
-            'tts_enabled': settings.tts_enabled,
-            'tts_volume': settings.tts_volume,
-            'font_family': settings.font_family,
-            'title_color': settings.title_color,
-            'highlight_color': settings.highlight_color,
-            'message_color': settings.message_color,
-            'alert_preset': settings.alert_preset,
-            'alert_custom_url': settings.alert_custom_url,
-            'sound_preset': settings.sound_preset,
-            'sound_custom_url': settings.sound_custom_url,
-            'alert_url': alert_url,
-            'sound_url': sound_url
-        }), 200
-        
-    elif request.method == 'POST':
-        data = request.json
-        if not settings:
-            return jsonify({'error': 'Settings not found'}), 404
-            
-        try:
-            settings.min_amount = float(data.get('min_amount', settings.min_amount))
-            settings.tts_enabled = bool(data.get('tts_enabled', settings.tts_enabled))
-            settings.tts_volume = float(data.get('tts_volume', settings.tts_volume))
-            
-            # Кастомизация
-            settings.font_family = data.get('font_family', settings.font_family)
-            settings.title_color = data.get('title_color', settings.title_color)
-            settings.highlight_color = data.get('highlight_color', settings.highlight_color)
-            settings.message_color = data.get('message_color', settings.message_color)
-            settings.alert_preset = data.get('alert_preset', settings.alert_preset)
-            settings.alert_custom_url = data.get('alert_custom_url', settings.alert_custom_url)
-            settings.sound_preset = data.get('sound_preset', settings.sound_preset)
-            settings.sound_custom_url = data.get('sound_custom_url', settings.sound_custom_url)
-            
-            db.session.commit()
-            return jsonify({'status': 'success'}), 200
-            
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f"Settings update failed: {e}")
-            return jsonify({'status': 'error', 'message': 'Invalid data or database error'}), 400
-
-@app.route('/api/v1/goal/<int:user_id>', methods=['GET', 'POST'])
-@login_required
-def goal_api(user_id):
-    if user_id != current_user.id:
-        abort(403)
-        
-    goal = Goal.query.filter_by(user_id=user_id).first()
-    
-    # Получаем текущую сумму
-    current_sum = db.session.query(func.sum(Donation.amount)).filter_by(user_id=user_id).scalar() or 0.0
-    
-    if request.method == 'GET':
-        if not goal:
-            return jsonify({'error': 'Goal not found'}), 404
-            
-        return jsonify({
-            'title': goal.title,
-            'target_amount': goal.target_amount,
-            'current_amount': current_sum,
-            'progress': min(100, (current_sum / goal.target_amount * 100) if goal.target_amount else 0)
-        }), 200
-        
-    elif request.method == 'POST':
-        data = request.json
-        if not goal:
-            return jsonify({'error': 'Goal not found'}), 404
-            
-        try:
-            goal.title = data.get('title', goal.title)
-            goal.target_amount = float(data.get('target_amount', goal.target_amount))
-            db.session.commit()
-            return jsonify({'status': 'success'}), 200
-            
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f"Goal update failed: {e}")
-            return jsonify({'status': 'error', 'message': 'Invalid data or database error'}), 400
-            
-@app.route('/api/v1/donations/<int:user_id>', methods=['GET'])
-@login_required
-def donations_api(user_id):
-    if user_id != current_user.id:
-        abort(403)
-        
-    # Донаты для текущего пользователя, отсортированные по времени
-    donations = Donation.query.filter_by(user_id=user_id).order_by(Donation.timestamp.desc()).limit(100).all()
-    
-    donations_data = [{
-        'id': d.id,
-        'name': d.name,
-        'amount': f"{d.amount:.2f}",
-        'message': d.message,
-        'timestamp': d.timestamp.isoformat(),
-        'is_read': d.is_read
-    } for d in donations]
-    
-    return jsonify(donations_data)
-
-@app.route('/api/v1/donations/reset', methods=['POST'])
-@login_required
-def reset_donations():
-    try:
-        # Удаляем все донаты пользователя
-        Donation.query.filter_by(user_id=current_user.id).delete()
-        db.session.commit()
-        
-        # Обновляем цель (сумма становится 0)
-        goal = Goal.query.filter_by(user_id=current_user.id).first()
-        if goal:
-            # Устанавливаем целевую сумму снова, чтобы прогресс был 0
-            # Если целевая сумма была 10000, она останется 10000.
-            pass
-            
-        return jsonify({'status': 'success', 'message': 'Все донаты сброшены.'}), 200
-    
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Donation reset failed: {e}")
-        return jsonify({'status': 'error', 'message': 'Ошибка сброса донатов.'}), 500
-
-@app.route('/alert_widget/<int:user_id>')
-def alert_widget(user_id):
-    user = User.query.get_or_404(user_id)
-    if user.status != 'active':
-         # Если пользователь не активен, возвращаем пустой виджет или заглушку
-        return "<!-- Пользователь не активен -->"
-
-    settings = user.settings or Settings(user_id=user.id) # Fallback
-    
-    # Получение URL из пресетов или кастомного URL
-    alert_url = ALERT_PRESETS.get(settings.alert_preset, {}).get('url') if settings.alert_preset in ALERT_PRESETS else settings.alert_custom_url
-    sound_url = SOUND_PRESETS.get(settings.sound_preset, {}).get('url') if settings.sound_preset in SOUND_PRESETS else settings.sound_custom_url
-
-    return render_template('alert.html', 
-                           user_id=user_id, 
-                           settings=settings,
-                           alert_url=alert_url,
-                           sound_url=sound_url,
-                           cache_buster=cache_buster)
-
-@app.route('/goal_widget/<int:user_id>')
-def goal_widget(user_id):
-    user = User.query.get_or_404(user_id)
-    goal = user.goal or Goal(user_id=user.id) # Fallback
-
-    return render_template('goal.html', 
-                           user_id=user_id, 
-                           goal=goal,
-                           settings=user.settings,
-                           cache_buster=cache_buster)
-
-@app.route('/top_donators_widget/<int:user_id>')
-def top_donators_widget(user_id):
-    user = User.query.get_or_404(user_id)
-    settings = user.settings or Settings(user_id=user.id) # Fallback
-    
-    # Расчет топ-донатеров (по общей сумме)
-    top_donators = db.session.query(Donation.name, func.sum(Donation.amount).label('total_amount')).\
-        filter_by(user_id=user_id).\
-        group_by(Donation.name).\
-        order_by(func.sum(Donation.amount).desc()).\
-        limit(5).all()
-
-    return render_template('top_donators.html', 
-                           top_donators=top_donators,
-                           settings=settings,
-                           title="ТОП Донатеры (Все время)",
-                           cache_buster=cache_buster)
-
-@app.route('/top_donators_day_widget/<int:user_id>')
-def top_donators_day_widget(user_id):
-    user = User.query.get_or_404(user_id)
-    settings = user.settings or Settings(user_id=user.id) # Fallback
-    today = datetime.now(timezone.utc).date()
-    
-    # Расчет топ-донатеров (за сегодня)
-    top_donators = db.session.query(Donation.name, func.sum(Donation.amount).label('total_amount')).\
-        filter_by(user_id=user_id, date=today).\
-        group_by(Donation.name).\
-        order_by(func.sum(Donation.amount).desc()).\
-        limit(5).all()
-
-    return render_template('top_donators.html', 
-                           top_donators=top_donators,
-                           settings=settings,
-                           title="ТОП Донатеры (Сегодня)",
-                           cache_buster=cache_buster)
-
-@app.route('/latest_donations_widget/<int:user_id>')
-def latest_donations_widget(user_id):
-    user = User.query.get_or_404(user_id)
-    settings = user.settings or Settings(user_id=user.id) # Fallback
-
-    # Последние 5 донатов
-    latest_donations = Donation.query.filter_by(user_id=user_id).\
-        order_by(Donation.timestamp.desc()).\
-        limit(5).all()
-
-    return render_template('latest_donations.html', 
-                           latest_donations=latest_donations,
-                           settings=settings,
-                           cache_buster=cache_buster)
-
-@app.route('/latest_donations_popout/<int:user_id>')
-def latest_donations_popout(user_id):
-    user = User.query.get_or_404(user_id)
-    settings = user.settings or Settings(user_id=user.id) # Fallback
-
-    # Последние 20 донатов (для всплывающего окна)
-    latest_donations = Donation.query.filter_by(user_id=user_id).\
-        order_by(Donation.timestamp.desc()).\
-        limit(20).all()
-
-    return render_template('latest_donations_popout.html', 
-                           latest_donations=latest_donations,
-                           settings=settings,
-                           cache_buster=cache_buster)
-
-@app.route('/admin_panel')
-@admin_required
 def admin_panel():
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    return render_template('admin_panel.html', users=users, cache_buster=cache_buster)
+    
+    users_data = []
+    for u in users:
+        # trial_days всегда N/A, так как триал удален
+        trial_days = 'N/A' 
+        users_data.append({
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'status': u.status,
+            'trial_days': trial_days
+        })
+    return render_template('admin_panel.html', users=users_data)
 
-@app.route('/admin_panel/update_user/<int:user_id>', methods=['POST'])
-@admin_required
+@app.route('/admin/update_user/<int:user_id>', methods=['POST'])
+@login_required
 def update_user(user_id):
-    user = User.query.get_or_404(user_id)
-    
-    role = request.form.get('role')
-    status = request.form.get('status')
-    
-    if role in ['user', 'admin']:
-        user.role = role
-    if status in ['active', 'inactive']:
-        user.status = status
-        
-    db.session.commit()
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
+    user = db.session.get(User, user_id)
+    if not user:
+        flash(f'Пользователь с ID {user_id} не найден.', 'error')
+    else:
+        user.role = request.form.get('role')
+        user.status = request.form.get('status')
+        # Логика продления триала удалена, так как это платный сервис
+        db.session.commit()
+        flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
 
-# Обработка ошибок
-@app.errorhandler(404)
-def not_found(error):
-    return render_template('error.html', error_code=404, error_message="Страница не найдена"), 404
+@app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
+@login_required
+def extend_trial(user_id):
+    # МАРШРУТ УДАЛЕН ИЗ ФУНКЦИОНАЛА
+    if current_user.role != 'admin': return redirect(url_for('dashboard'))
+    flash('Функция продления пробного периода удалена.', 'error')
+    return redirect(url_for('admin_panel'))
 
-@app.errorhandler(403)
-def forbidden(error):
-    return render_template('error.html', error_code=403, error_message="Доступ запрещен"), 403
+# --- API ---
+@app.route('/api/get_all_data', methods=['GET'])
+@api_login_required
+def get_all_data():
+    user = g.user
+    full_update = get_full_update_message(user.id)
+    
+    # Добавляем статистику в API-ответ
+    full_update['data']['stats'] = get_donation_stats(user.id)
+    
+    return jsonify(full_update['data'])
 
-if __name__ == '__main__':
-    # Определение порта для Render
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+@app.route('/api/submit_donation', methods=['POST'])
+@api_login_required
+def submit_donation():
+    user = g.user
+    data = request.get_json()
+    if not data or 'name' not in data or 'amount' not in data:
+        return jsonify({'error': 'Отсутствуют обязательные поля.'}), 400
+    new_donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=user.id)
+    db.session.add(new_donation)
+    user.goal.current_amount += float(data['amount'])
+    db.session.commit()
+    donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+        gevent.spawn(tts_task, tts_message, user.id)
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/update_widget_settings', methods=['POST'])
+@api_login_required
+def update_widget_settings():
+    user = g.user
+    data = request.json
+    
+    settings = user.settings or Settings(user_id=user.id)
+    
+    # ИСПРАВЛЕНИЕ: Проверяем каждое значение перед обновлением, чтобы избежать сохранения None
+    if data.get('alert_preset') is not None:
+        settings.alert_preset = data.get('alert_preset')
+    if data.get('sound_preset') is not None:
+        settings.sound_preset = data.get('sound_preset')
+    
+    settings.alert_custom_url = data.get('alert_custom_url')
+    settings.sound_custom_url = data.get('sound_custom_url')
+    
+    if data.get('font_family') is not None:
+        settings.font_family = data.get('font_family')
+    if data.get('title_color') is not None:
+        settings.title_color = data.get('title_color')
+    if data.get('highlight_color') is not None:
+        settings.highlight_color = data.get('highlight_color')
+    if 'message_color' in data and data['message_color']:
+        settings.message_color = data['message_color']
+    
+    if not user.settings:
+        db.session.add(settings)
+    
+    db.session.commit()
+    
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/update_goal', methods=['POST'])
+@api_login_required
+def update_goal():
+    user = g.user
+    data = request.json
+    user.goal.title = data.get('title')
+    user.goal.target_amount = float(data.get('target', 0))
+    db.session.commit()
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/update_settings', methods=['POST'])
+@api_login_required
+def update_settings():
+    user = g.user
+    data = request.json
+    user.settings.min_amount = float(data.get('min_amount', 0))
+    user.settings.tts_enabled = bool(data.get('tts_enabled'))
+    user.settings.tts_volume = float(data.get('tts_volume', 0.7))
+    db.session.commit()
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/add_manual_donation', methods=['POST'])
+@api_login_required
+def add_manual_donation():
+    user = g.user
+    data = request.json
+    donation = Donation(name=data['name'], amount=float(data['amount']), message=data.get('message'), user_id=user.id)
+    db.session.add(donation)
+    user.goal.current_amount += float(data['amount'])
+    db.session.commit()
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
+        tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
+        gevent.spawn(tts_task, tts_message, user.id)
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/reset_donations', methods=['POST'])
+@api_login_required
+def reset_donations():
+    user = g.user
+    user.donations.delete()
+    user.goal.current_amount = 0
+    db.session.commit()
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/delete_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
+def delete_donation(donation_id):
+    user = g.user
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != user.id:
+        return jsonify({'error': 'Донат не найден'}), 404
+    user.goal.current_amount -= donation.amount
+    db.session.delete(donation)
+    db.session.commit()
+    broadcast_to_user(user.id, get_full_update_message(user.id))
+    return jsonify({'status': 'success'})
+
+@app.route('/api/replay_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
+def replay_donation(donation_id):
+    user = g.user
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != user.id:
+        return jsonify({'error': 'Донат не найден'}), 404
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
+    if user.settings.tts_enabled:
+        tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
+        gevent.spawn(tts_task, tts_message, user.id)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/test_donation', methods=['POST'])
+@api_login_required
+def test_donation_api():
+    user = g.user
+    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
+    broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
+    if user.settings.tts_enabled:
+        tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
+        gevent.spawn(tts_task, tts_message, user.id)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/get_phone_status', methods=['GET'])
+@api_login_required
+def get_phone_status():
+    user = g.user
+    return jsonify(PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"}))
+
+@app.route('/api/update_phone_status', methods=['POST'])
+@api_login_required
+def update_phone_status():
+    user = g.user
+    PHONE_STATUS[user.id] = request.json
+    broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
+    return jsonify({'status': 'success'})
+
+@app.route('/api/get_daily_top_donators', methods=['GET'])
+@api_login_required
+def get_daily_top_donators():
+    user = g.user
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 1. Получаем все донаты за сегодня для этого пользователя
+    donations_today = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).all()
+    
+    # 2. Агрегируем суммы по именам
+    daily_top_donators = {}
+    for d in donations_today:
+        name = d.name if d.name else 'Аноним'
+        daily_top_donators[name] = daily_top_donators.get(name, 0) + d.amount
+        
+    # 3. Сортируем и готовим ответ
+    sorted_donators = sorted(daily_top_donators.items(), key=lambda item: item[1], reverse=True)
+    
+    response_data = [{'name': name, 'amount': amount} for name, amount in sorted_donators]
+    
+    return jsonify(response_data)
+
+
+# --- Маршруты для виджетов и файлов ---
+@app.route('/alert/<int:user_id>')
+def alert_widget(user_id):
+    # Добавляем проверку статуса пользователя для виджетов
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('alert.html', user_id=user_id)
+
+@app.route('/goal/<int:user_id>')
+def goal_widget(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('goal.html', user_id=user_id)
+
+@app.route('/top_donators/<int:user_id>')
+def top_donators_widget(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('top_donators.html', user_id=user_id)
+
+@app.route('/top_donators_day/<int:user_id>')
+def top_donators_day_widget(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('top_donators_day.html', user_id=user_id)
+
+@app.route('/latest_donations/<int:user_id>')
+def latest_donations_widget(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('latest_donations.html', user_id=user_id)
+    
+@app.route('/latest_donations_popout/<int:user_id>')
+def latest_donations_popout(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('latest_donations_popout.html', user_id=user_id)
+
+@app.route('/tts_cache/<path:filename>')
+def serve_tts_cache(filename):
+    return send_from_directory(TTS_CACHE_DIR, filename)
+
+@app.route('/static/media/<path:filename>')
+def serve_media_files(filename):
+    # ИЗМЕНЕНИЕ: Используем os.path.join
+    return send_from_directory(os.path.join(basedir, 'static', 'media'), filename)
+
+# --- WebSocket ---
+@sock.route('/ws')
+def ws(ws):
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        if current_user.is_authenticated:
+            user_id = current_user.id
+        else: return
+        
+    user = db.session.get(User, user_id)
+    if not user:
+        ws.close()
+        return
+
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        # Отправляем сообщение об ошибке, если пробный период истек
+        try:
+            ws.send(json.dumps({"type": "error", "message": message}))
+        except Exception:
+            pass
+        ws.close()
+        return
+        
+    if user_id not in clients:
+        clients[user_id] = set()
+    clients[user_id].add(ws)
+    print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
+    try:
+        # ВАЖНО: Вызываем get_full_update_message внутри app_context
+        # (он создается автоматически при работе в Flask/Gevent),
+        # но мы убеждаемся, что сессия доступна.
+        ws.send(json.dumps(get_full_update_message(user_id), ensure_ascii=False))
+        while True:
+            gevent.sleep(25)
+            try:
+                ws.send(json.dumps({"type": "heartbeat"}))
+            except Exception:
+                break 
+    finally:
+        if user_id in clients and ws in clients[user_id]:
+            clients[user_id].remove(ws)
+        print(f"🔌 WebSocket client disconnected for user {user_id}.")
+
+# --- Запуск ---
+if __name__ != '__main__':
+    gevent.spawn(cleanup_tts_files)
+    # db.create_all() УДАЛЕНО, ТАК КАК ИСПОЛЬЗУЕТСЯ СУЩЕСТВУЮЩАЯ PGSQL БД
+    # Gunicorn запускает приложение, поэтому код, который выполняется
+    # только при запуске через `python server.py`, здесь не нужен.
