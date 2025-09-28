@@ -179,8 +179,8 @@ def gemini_tts_task(text, user_id):
                 with open(full_path, 'wb') as f:
                     f.write(audio_data)
 
-                print(f"✅ Gemini TTS создан: {full_path}")
                 tts_url = f"/audio_cache/{filename_part}"
+                print(f"✅ Gemini TTS создан. URL для клиента: {tts_url}") # УЛУЧШЕННЫЙ ЛОГ
                 broadcast_to_user(user_id, {"type": "tts", "url": tts_url})
             else:
                 print(f"❌ Gemini API вернул неожиданный ответ: {response_json}")
