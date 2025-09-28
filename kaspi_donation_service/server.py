@@ -16,12 +16,8 @@ from gtts import gTTS
 from datetime import datetime, timedelta
 import gevent
 from functools import wraps
-<<<<<<< HEAD
-from sqlalchemy import func
-=======
 from sqlalchemy import func, extract
 from collections import defaultdict
->>>>>>> b4cc776 (update)
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -56,11 +52,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-<<<<<<< HEAD
-    trial_end_date = db.Column(db.DateTime, nullable=True) # Новое поле для пробного периода
-=======
     # УДАЛЕНО: trial_end_date = db.Column(db.DateTime, nullable=True) # Пробный период удален
->>>>>>> b4cc776 (update)
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -140,8 +132,6 @@ def get_donation_stats(user_id):
         'today': {'count': today_donations_count, 'sum': today_donations_sum},
         'month': {'count': month_donations_count, 'sum': month_donations_sum},
     }
-<<<<<<< HEAD
-=======
     
 def get_daily_top_donators(user_id):
     """Возвращает топ донатеров за сегодняшний день."""
@@ -159,7 +149,6 @@ def get_daily_top_donators(user_id):
     sorted_donators = sorted(top_donators_data.items(), key=lambda item: item[1], reverse=True)
     
     return [{'name': name, 'amount': amount} for name, amount in sorted_donators[:10]]
->>>>>>> b4cc776 (update)
 
 # --- Фоновые задачи ---
 def cleanup_tts_files():
@@ -233,33 +222,16 @@ def get_full_update_message(user_id):
 
 # --- Декоратор для API ---
 def check_trial_status(user):
-<<<<<<< HEAD
-=======
     # УДАЛЕНО: Логика пробного периода.
->>>>>>> b4cc776 (update)
     # Если пользователь - админ, ему всегда разрешен доступ
     if user.role == 'admin':
         return True, None
     # Если пользователь активен (платная подписка), ему разрешен доступ
     if user.status == 'active':
         return True, None
-<<<<<<< HEAD
-    # Если у пользователя есть пробный период, проверяем, не истек ли он
-    if user.trial_end_date:
-        if datetime.now() < user.trial_end_date:
-            return True, user.trial_end_date
-        else:
-            # Пробный период истек, меняем статус на "inactive"
-            user.status = 'inactive'
-            db.session.commit()
-            return False, 'Пробный период истек.'
-    # Если пользователь не активен и нет пробного периода, доступ запрещен
-    return False, 'Аккаунт неактивен.'
-=======
     
     # Если пользователь не активен, доступ запрещен
     return False, 'Аккаунт неактивен. Обратитесь к администратору для оплаты и активации.'
->>>>>>> b4cc776 (update)
 
 
 def api_login_required(f):
@@ -325,24 +297,15 @@ def register():
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
-<<<<<<< HEAD
-                status='trial', # Новый статус
-                trial_end_date=datetime.now() + timedelta(days=14) # Дата окончания пробного периода
-=======
                 status='inactive', # НОВЫЙ СТАТУС: Пользователь неактивен до оплаты
                 # УДАЛЕНО: trial_end_date=datetime.now() + timedelta(days=14)
->>>>>>> b4cc776 (update)
             )
             db.session.add(new_user)
             db.session.commit()
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-<<<<<<< HEAD
-            flash('Регистрация прошла успешно! Вам предоставлен 14-дневный бесплатный период.', 'success')
-=======
             flash('Регистрация прошла успешно! Ваш аккаунт неактивен. Для активации обратитесь к администратору.', 'success')
->>>>>>> b4cc776 (update)
             return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -370,60 +333,32 @@ def delete_admin_by_id():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-<<<<<<< HEAD
-    trial_info = None
-    if current_user.status == 'trial' and current_user.trial_end_date:
-        remaining_days = (current_user.trial_end_date - datetime.now()).days
-        if remaining_days > 0:
-            trial_info = f'До конца пробного периода осталось {remaining_days} дней.'
-        else:
-            trial_info = 'Ваш пробный период истек. Для продолжения работы, пожалуйста, приобретите доступ.'
-=======
     # УДАЛЕНО: Логика отображения trial_info
->>>>>>> b4cc776 (update)
     
     stats = get_donation_stats(current_user.id)
     donations_history = Donation.query.filter_by(user_id=current_user.id).order_by(Donation.timestamp.desc()).limit(10).all()
     
-<<<<<<< HEAD
-    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, donations_history=donations_history, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
-=======
     # ИЗМЕНЕНИЕ: Передаем статус пользователя
     status_info = None
     if current_user.status == 'inactive':
         status_info = 'Ваш аккаунт неактивен. Для начала работы свяжитесь с администратором.'
     
     return render_template('dashboard.html', user=current_user, status_info=status_info, stats=stats, donations_history=donations_history, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
->>>>>>> b4cc776 (update)
 
 @app.route('/admin')
 @login_required
 def admin_panel():
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-<<<<<<< HEAD
-    # ИЗМЕНЕНИЕ: Создаем дополнительную информацию для шаблона
-    users_data = []
-    for u in users:
-        trial_days = 'N/A'
-        if u.status == 'trial' and u.trial_end_date:
-            remaining = u.trial_end_date - datetime.now()
-            trial_days = remaining.days
-=======
     # ИЗМЕНЕНИЕ: Упрощаем данные для шаблона (удалена логика пробного периода)
     users_data = []
     for u in users:
->>>>>>> b4cc776 (update)
         users_data.append({
             'id': u.id,
             'username': u.username,
             'role': u.role,
             'status': u.status,
-<<<<<<< HEAD
-            'trial_days': trial_days
-=======
             'trial_days': 'N/A' # Оставляем для совместимости, но не используется
->>>>>>> b4cc776 (update)
         })
     return render_template('admin_panel.html', users=users_data)
 
@@ -435,10 +370,7 @@ def update_user(user_id):
     if not user:
         flash(f'Пользователь с ID {user_id} не найден.', 'error')
     else:
-<<<<<<< HEAD
-=======
         # ИЗМЕНЕНИЕ: Удалена логика продления пробного периода
->>>>>>> b4cc776 (update)
         user.role = request.form.get('role')
         user.status = request.form.get('status')
         db.session.commit()
@@ -448,25 +380,9 @@ def update_user(user_id):
 @app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
 @login_required
 def extend_trial(user_id):
-<<<<<<< HEAD
-    if current_user.role != 'admin': return redirect(url_for('dashboard'))
-    user = db.session.get(User, user_id)
-    if not user:
-        flash(f'Пользователь с ID {user_id} не найден.', 'error')
-    else:
-        # Продлеваем пробный период на 14 дней
-        new_end_date = datetime.now() + timedelta(days=14)
-        if user.trial_end_date and user.trial_end_date > datetime.now():
-            new_end_date = user.trial_end_date + timedelta(days=14)
-        user.trial_end_date = new_end_date
-        user.status = 'trial' # Возвращаем статус на "trial"
-        db.session.commit()
-        flash(f'Пробный период пользователя {user.username} продлен.', 'success')
-=======
     # УДАЛЕНО: Этот маршрут больше не нужен, но оставляем его заглушку
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     flash('Функция продления пробного периода удалена. Используйте статус "active" для активации.', 'warning')
->>>>>>> b4cc776 (update)
     return redirect(url_for('admin_panel'))
 
 # --- API ---
@@ -481,8 +397,6 @@ def get_all_data():
     
     return jsonify(full_update['data'])
 
-<<<<<<< HEAD
-=======
 @app.route('/api/get_daily_top_donators', methods=['GET'])
 @api_login_required
 def api_get_daily_top_donators():
@@ -491,7 +405,6 @@ def api_get_daily_top_donators():
     top_donators = get_daily_top_donators(user.id)
     return jsonify({"top_donators_day": top_donators})
 
->>>>>>> b4cc776 (update)
 @app.route('/api/submit_donation', methods=['POST'])
 @api_login_required
 def submit_donation():
@@ -505,15 +418,9 @@ def submit_donation():
     db.session.commit()
     donation_data = {'id': new_donation.id, 'name': new_donation.name, 'amount': new_donation.amount, 'message': new_donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-<<<<<<< HEAD
-    # if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-    #     tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-    #     gevent.spawn(tts_task, tts_message, user.id)
-=======
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
         gevent.spawn(tts_task, tts_message, user.id)
->>>>>>> b4cc776 (update)
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -587,15 +494,9 @@ def add_manual_donation():
     db.session.commit()
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-<<<<<<< HEAD
-    # if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
-    #     tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
-    #     gevent.spawn(tts_task, tts_message, user.id)
-=======
     if user.settings.tts_enabled and float(data['amount']) >= user.settings.min_amount:
         tts_message = f"{data['name']} отправил {int(data['amount'])} тенге. Сообщение: {data.get('message', 'без сообщения')}"
         gevent.spawn(tts_task, tts_message, user.id)
->>>>>>> b4cc776 (update)
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
 
@@ -631,15 +532,9 @@ def replay_donation(donation_id):
         return jsonify({'error': 'Донат не найден'}), 404
     donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
     broadcast_to_user(user.id, {"type": "show_alert", "data": donation_data})
-<<<<<<< HEAD
-    # if user.settings.tts_enabled:
-    #     tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
-    #     gevent.spawn(tts_task, tts_message, user.id)
-=======
     if user.settings.tts_enabled:
         tts_message = f"{donation.name} отправил {donation.amount} тенге. Сообщение: {donation.message or 'без сообщения'}"
         gevent.spawn(tts_task, tts_message, user.id)
->>>>>>> b4cc776 (update)
     return jsonify({'status': 'success'})
 
 @app.route('/api/test_donation', methods=['POST'])
@@ -648,15 +543,9 @@ def test_donation_api():
     user = g.user
     test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
     broadcast_to_user(user.id, {"type": "show_alert", "data": test_donation_data})
-<<<<<<< HEAD
-    # if user.settings.tts_enabled:
-    #     tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
-    #     gevent.spawn(tts_task, tts_message, user.id)
-=======
     if user.settings.tts_enabled:
         tts_message = "Тестер отправил 100 тенге. Сообщение: Это тестовый донат!"
         gevent.spawn(tts_task, tts_message, user.id)
->>>>>>> b4cc776 (update)
     return jsonify({'status': 'success'})
 
 @app.route('/api/get_phone_status', methods=['GET'])
@@ -762,11 +651,7 @@ def ws(ws):
 
     is_allowed, message = check_trial_status(user)
     if not is_allowed:
-<<<<<<< HEAD
-        # Отправляем сообщение об ошибке, если пробный период истек
-=======
         # Отправляем сообщение об ошибке, если аккаунт неактивен
->>>>>>> b4cc776 (update)
         try:
             ws.send(json.dumps({"type": "error", "message": message}))
         except Exception:
@@ -796,7 +681,3 @@ if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
         db.create_all() # Создает все таблицы, если их нет
-<<<<<<< HEAD
-
-=======
->>>>>>> b4cc776 (update)
