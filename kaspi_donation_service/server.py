@@ -51,6 +51,8 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    # ИЗМЕНЕНИЕ: ВОЗВРАЩАЕМ trial_end_date для соответствия схеме PostgreSQL
+    trial_end_date = db.Column(db.DateTime, nullable=True) 
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -272,6 +274,8 @@ def register():
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
                 status='inactive', # Новый статус
+                # ИЗМЕНЕНИЕ: Добавляем заглушку, так как поле нужно в базе данных
+                trial_end_date=datetime.now()
             )
             db.session.add(new_user)
             db.session.commit()
@@ -309,7 +313,7 @@ def admin_panel():
             'username': u.username,
             'role': u.role,
             'status': u.status,
-            'trial_days': 'N/A' # Заглушка, так как поле удалено
+            'trial_days': 'N/A' # Заглушка
         })
     return render_template('admin_panel.html', users=users_data)
 
