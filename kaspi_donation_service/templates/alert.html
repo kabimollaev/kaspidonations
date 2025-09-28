@@ -99,7 +99,42 @@
         const ALERT_DURATION = 8000;
         
         const imagePreloader = new Image();
-        const mainSoundPreloader = new Audio(); // Переименовано для ясности
+        
+        // --- НОВАЯ СИСТЕМА ВОСПРОИЗВЕДЕНИЯ АУДИО ---
+        const audioPlayer = new Audio();
+        let audioQueue = [];
+        let mainSoundUrl = ''; // Храним URL основного звука
+
+        audioPlayer.onended = () => {
+            // Когда один звук заканчивается, пытаемся запустить следующий из очереди
+            processAudioQueue();
+        };
+
+        function processAudioQueue() {
+            // Запускаем новый звук только если плеер не занят и в очереди что-то есть
+            if (audioPlayer.paused && audioQueue.length > 0) {
+                const nextUrl = audioQueue.shift();
+                console.log(`Playing next in queue: ${nextUrl}`);
+                audioPlayer.src = nextUrl;
+                
+                // Устанавливаем громкость в зависимости от того, что проигрываем
+                if (nextUrl === mainSoundUrl) {
+                    audioPlayer.volume = 1.0; // Громкость для основного звука
+                } else {
+                    audioPlayer.volume = currentSettings.tts_volume || 0.7; // Громкость для TTS
+                }
+
+                const playPromise = audioPlayer.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.error("Ошибка воспроизведения аудио из очереди:", error);
+                        // Если ошибка, все равно пытаемся обработать остальную часть очереди
+                        processAudioQueue();
+                    });
+                }
+            }
+        }
+        // ---------------------------------------------
 
         function connectWebSocket() {
             const userId = "{{ user_id }}";
@@ -115,11 +150,18 @@
                 
                 if (message.type === 'show_alert') {
                     alertQueue.push(message.data);
+                    // Добавляем основной звук в очередь
+                    if(mainSoundUrl) {
+                        audioQueue.push(mainSoundUrl);
+                        processAudioQueue(); // Запускаем обработку очереди
+                    }
                     processQueue();
                 } 
-                // --- ИСПРАВЛЕНИЕ: Добавлена обработка TTS ---
                 else if (message.type === 'tts' && message.url) {
-                    playTTS(message.url);
+                    // Добавляем TTS в очередь
+                    console.log(`Получена озвучка: ${message.url}`);
+                    audioQueue.push(message.url);
+                    processAudioQueue(); // Запускаем обработку очереди
                 }
                 else if (message.type === 'full_update') {
                     if (isShowingAlert) {
@@ -138,22 +180,9 @@
             if (settings.alert_url) {
                 imagePreloader.src = `${settings.alert_url}?v=${new Date().getTime()}`;
             }
+            // Просто сохраняем URL, не создавая новый Audio объект
             if (settings.sound_url) {
-                mainSoundPreloader.src = `${settings.sound_url}?v=${new Date().getTime()}`;
-                mainSoundPreloader.load();
-            }
-        }
-
-        // --- ИСПРАВЛЕНИЕ: Новая функция для воспроизведения озвучки ---
-        function playTTS(url) {
-            console.log(`Получена озвучка: ${url}`);
-            const ttsAudio = new Audio(url);
-            ttsAudio.volume = currentSettings.tts_volume || 0.7;
-            const playPromise = ttsAudio.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => {
-                    console.error("Ошибка воспроизведения TTS:", error);
-                });
+                mainSoundUrl = `${settings.sound_url}?v=${new Date().getTime()}`;
             }
         }
 
@@ -188,14 +217,8 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим основной звук доната
-            mainSoundPreloader.currentTime = 0;
-            const playPromise = mainSoundPreloader.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => {
-                    console.error("Audio play was prevented:", error);
-                });
-            }
+            // Воспроизведение звука теперь управляется системой очереди `processAudioQueue`
+            // поэтому старый код воспроизведения удален отсюда.
 
             setTimeout(() => alertBox.classList.add('visible'), 50);
             setTimeout(hideAlert, ALERT_DURATION);
