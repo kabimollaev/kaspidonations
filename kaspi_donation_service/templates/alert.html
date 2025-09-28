@@ -12,7 +12,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* Переменные для кастомизации */
             --widget-font: 'Inter', sans-serif;
             --title-color: #FFFFFF;
             --highlight-color: #F14635;
@@ -100,7 +99,7 @@
         const ALERT_DURATION = 8000;
         
         const imagePreloader = new Image();
-        const audioPreloader = new Audio();
+        const mainSoundPreloader = new Audio(); // Переименовано для ясности
 
         function connectWebSocket() {
             const userId = "{{ user_id }}";
@@ -117,33 +116,50 @@
                 if (message.type === 'show_alert') {
                     alertQueue.push(message.data);
                     processQueue();
-                } else if (message.type === 'full_update') {
-                    // *** ИСПРАВЛЕНИЕ: Игнорируем обновление, если алерт уже показывается ***
+                } 
+                // --- ИСПРАВЛЕНИЕ: Добавлена обработка TTS ---
+                else if (message.type === 'tts' && message.url) {
+                    playTTS(message.url);
+                }
+                else if (message.type === 'full_update') {
                     if (isShowingAlert) {
-                        console.log("Ignoring full_update while an alert is active to prevent interruption.");
                         return;
                     }
-                    
                     currentSettings = message.data.settings || {};
-                    applyCustomizations(currentSettings);
-                    
-                    if (currentSettings.alert_url) {
-                        imagePreloader.src = `${currentSettings.alert_url}?v=${new Date().getTime()}`;
-                    }
-                    if (currentSettings.sound_url) {
-                        audioPreloader.src = `${currentSettings.sound_url}?v=${new Date().getTime()}`;
-                        audioPreloader.load();
-                    }
+                    preloadAssets(currentSettings);
                 }
             };
             
             ws.onclose = () => setTimeout(connectWebSocket, 3000);
             ws.onerror = (error) => ws.close();
         }
+        
+        function preloadAssets(settings) {
+            if (settings.alert_url) {
+                imagePreloader.src = `${settings.alert_url}?v=${new Date().getTime()}`;
+            }
+            if (settings.sound_url) {
+                mainSoundPreloader.src = `${settings.sound_url}?v=${new Date().getTime()}`;
+                mainSoundPreloader.load();
+            }
+        }
+
+        // --- ИСПРАВЛЕНИЕ: Новая функция для воспроизведения озвучки ---
+        function playTTS(url) {
+            console.log(`Получена озвучка: ${url}`);
+            const ttsAudio = new Audio(url);
+            ttsAudio.volume = currentSettings.tts_volume || 0.7;
+            const playPromise = ttsAudio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.error("Ошибка воспроизведения TTS:", error);
+                });
+            }
+        }
 
         function processQueue() {
             if (isShowingAlert || alertQueue.length === 0) return;
-            isShowingAlert = true; // Блокируем новые алерты и обновления
+            isShowingAlert = true;
             const data = alertQueue.shift();
             
             if (data.id === lastShownAlertId && !String(data.id).startsWith('test_')) {
@@ -158,11 +174,11 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const alertUrl = imagePreloader.src; 
+            const alertUrl = imagePreloader.src || '/static/media/alert.gif'; 
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
-                    <img src="${alertUrl}" class="alert-gif" onerror="this.src='/static/media/alert.gif'" alt="Donation animation">
+                    <img src="${alertUrl}" class="alert-gif" alt="Donation animation">
                     <div class="alert-content">
                         <p class="alert-main-text">
                             ${escapeHtml(data.name)} - <span class="highlight">${amountFormatted} ₸</span>
@@ -172,18 +188,16 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            audioPreloader.volume = currentSettings.tts_volume || 0.7;
-            audioPreloader.currentTime = 0;
-            const playPromise = audioPreloader.play();
+            // Воспроизводим основной звук доната
+            mainSoundPreloader.currentTime = 0;
+            const playPromise = mainSoundPreloader.play();
             if (playPromise !== undefined) {
                 playPromise.catch(error => {
                     console.error("Audio play was prevented:", error);
-                    console.log("Please check OBS Audio Settings for the Browser Source.");
                 });
             }
 
             setTimeout(() => alertBox.classList.add('visible'), 50);
-
             setTimeout(hideAlert, ALERT_DURATION);
         }
         
@@ -193,8 +207,8 @@
                 alertBox.classList.remove('visible');
                 setTimeout(() => {
                      alertContainer.innerHTML = '';
-                     isShowingAlert = false; // Разблокируем
-                     processQueue(); // Проверяем, не появился ли новый алерт в очереди
+                     isShowingAlert = false;
+                     processQueue();
                 }, 500);
             } else {
                 isShowingAlert = false;
@@ -207,13 +221,6 @@
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
         
-        function applyCustomizations(settings) {
-            document.documentElement.style.setProperty('--widget-font', settings.font_family || 'Inter');
-            document.documentElement.style.setProperty('--title-color', settings.title_color || '#FFFFFF');
-            document.documentElement.style.setProperty('--highlight-color', settings.highlight_color || '#F14635');
-            document.documentElement.style.setProperty('--message-color', settings.message_color || '#A0AEC0');
-        }
-
         connectWebSocket();
     </script>
 </body>
