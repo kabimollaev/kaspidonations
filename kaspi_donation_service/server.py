@@ -16,8 +16,7 @@ from gtts import gTTS
 from datetime import datetime, timedelta
 import gevent
 from functools import wraps
-from sqlalchemy import func, extract
-from collections import defaultdict
+from sqlalchemy import func
 
 # --- Настройка путей ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -52,7 +51,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     status = db.Column(db.String(20), nullable=False, default='inactive')
     api_key = db.Column(db.String(120), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    # УДАЛЕНО: trial_end_date = db.Column(db.DateTime, nullable=True) # Пробный период удален
+    # ИЗМЕНЕНИЕ: trial_end_date удалено
     donations = db.relationship('Donation', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     goal = db.relationship('Goal', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
     settings = db.relationship('Settings', backref='user', uselist=False, lazy=True, cascade="all, delete-orphan")
@@ -132,23 +131,6 @@ def get_donation_stats(user_id):
         'today': {'count': today_donations_count, 'sum': today_donations_sum},
         'month': {'count': month_donations_count, 'sum': month_donations_sum},
     }
-    
-def get_daily_top_donators(user_id):
-    """Возвращает топ донатеров за сегодняшний день."""
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # 1. Получаем все донаты за сегодня
-    donations_today = Donation.query.filter_by(user_id=user_id).filter(Donation.timestamp >= today_start).all()
-    
-    # 2. Агрегируем суммы по именам донатеров
-    top_donators_data = defaultdict(float)
-    for d in donations_today:
-        top_donators_data[d.name] += d.amount
-        
-    # 3. Сортируем и возвращаем топ-10
-    sorted_donators = sorted(top_donators_data.items(), key=lambda item: item[1], reverse=True)
-    
-    return [{'name': name, 'amount': amount} for name, amount in sorted_donators[:10]]
 
 # --- Фоновые задачи ---
 def cleanup_tts_files():
@@ -222,17 +204,11 @@ def get_full_update_message(user_id):
 
 # --- Декоратор для API ---
 def check_trial_status(user):
-    # УДАЛЕНО: Логика пробного периода.
-    # Если пользователь - админ, ему всегда разрешен доступ
-    if user.role == 'admin':
+    # ИЗМЕНЕНИЕ: Упрощенная логика проверки статуса после удаления пробного периода
+    if user.role == 'admin' or user.status == 'active':
         return True, None
-    # Если пользователь активен (платная подписка), ему разрешен доступ
-    if user.status == 'active':
-        return True, None
-    
-    # Если пользователь не активен, доступ запрещен
-    return False, 'Аккаунт неактивен. Обратитесь к администратору для оплаты и активации.'
-
+    else:
+        return False, 'Аккаунт неактивен. Пожалуйста, обратитесь к администратору для активации.'
 
 def api_login_required(f):
     @wraps(f)
@@ -297,15 +273,15 @@ def register():
             new_user = User(
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
-                status='inactive', # НОВЫЙ СТАТУС: Пользователь неактивен до оплаты
-                # УДАЛЕНО: trial_end_date=datetime.now() + timedelta(days=14)
+                status='inactive', # Новый статус
+                # ИЗМЕНЕНИЕ: trial_end_date удалено
             )
             db.session.add(new_user)
             db.session.commit()
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-            flash('Регистрация прошла успешно! Ваш аккаунт неактивен. Для активации обратитесь к администратору.', 'success')
+            flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором.', 'success')
             return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -333,24 +309,20 @@ def delete_admin_by_id():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # УДАЛЕНО: Логика отображения trial_info
+    # ИЗМЕНЕНИЕ: Удаление логики проверки пробного периода, так как его нет
+    trial_info = None # Больше не используется
     
     stats = get_donation_stats(current_user.id)
-    donations_history = Donation.query.filter_by(user_id=current_user.id).order_by(Donation.timestamp.desc()).limit(10).all()
+    # ИЗМЕНЕНИЕ: Удалена фильтрация по статусу trial
     
-    # ИЗМЕНЕНИЕ: Передаем статус пользователя
-    status_info = None
-    if current_user.status == 'inactive':
-        status_info = 'Ваш аккаунт неактивен. Для начала работы свяжитесь с администратором.'
-    
-    return render_template('dashboard.html', user=current_user, status_info=status_info, stats=stats, donations_history=donations_history, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
+    return render_template('dashboard.html', user=current_user, trial_info=trial_info, stats=stats, ALERT_PRESETS=ALERT_PRESETS, SOUND_PRESETS=SOUND_PRESETS)
 
 @app.route('/admin')
 @login_required
 def admin_panel():
     if current_user.role != 'admin': return redirect(url_for('dashboard'))
     users = User.query.all()
-    # ИЗМЕНЕНИЕ: Упрощаем данные для шаблона (удалена логика пробного периода)
+    # ИЗМЕНЕНИЕ: Убираем логику trial_days
     users_data = []
     for u in users:
         users_data.append({
@@ -358,7 +330,7 @@ def admin_panel():
             'username': u.username,
             'role': u.role,
             'status': u.status,
-            'trial_days': 'N/A' # Оставляем для совместимости, но не используется
+            'trial_days': 'N/A' # Заглушка, так как поле удалено
         })
     return render_template('admin_panel.html', users=users_data)
 
@@ -370,9 +342,9 @@ def update_user(user_id):
     if not user:
         flash(f'Пользователь с ID {user_id} не найден.', 'error')
     else:
-        # ИЗМЕНЕНИЕ: Удалена логика продления пробного периода
         user.role = request.form.get('role')
         user.status = request.form.get('status')
+        # ИЗМЕНЕНИЕ: Удаление логики продления/установки trial_end_date
         db.session.commit()
         flash(f'Данные пользователя {user.username} обновлены.', 'success')
     return redirect(url_for('admin_panel'))
@@ -380,10 +352,11 @@ def update_user(user_id):
 @app.route('/admin/extend_trial/<int:user_id>', methods=['POST'])
 @login_required
 def extend_trial(user_id):
-    # УДАЛЕНО: Этот маршрут больше не нужен, но оставляем его заглушку
-    if current_user.role != 'admin': return redirect(url_for('dashboard'))
-    flash('Функция продления пробного периода удалена. Используйте статус "active" для активации.', 'warning')
+    # ИЗМЕНЕНИЕ: Маршрут полностью удален, так как триала больше нет.
+    # Если на него нажмут, вернет на админ-панель
+    flash('Пробный период отключен. Используйте статус "active" для активации.', 'warning')
     return redirect(url_for('admin_panel'))
+
 
 # --- API ---
 @app.route('/api/get_all_data', methods=['GET'])
@@ -396,14 +369,6 @@ def get_all_data():
     full_update['data']['stats'] = get_donation_stats(user.id)
     
     return jsonify(full_update['data'])
-
-@app.route('/api/get_daily_top_donators', methods=['GET'])
-@api_login_required
-def api_get_daily_top_donators():
-    """API для получения топ-донатеров за сегодняшний день."""
-    user = g.user
-    top_donators = get_daily_top_donators(user.id)
-    return jsonify({"top_donators_day": top_donators})
 
 @app.route('/api/submit_donation', methods=['POST'])
 @api_login_required
@@ -562,6 +527,27 @@ def update_phone_status():
     broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
     return jsonify({'status': 'success'})
 
+@app.route('/api/get_daily_top_donators', methods=['GET'])
+@api_login_required
+def get_daily_top_donators():
+    user = g.user
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Получаем донаты только за сегодня
+    donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).order_by(Donation.amount.desc()).all()
+    
+    # Агрегация по имени
+    top_donators = {}
+    for d in donations:
+        name = d.name
+        top_donators[name] = top_donators.get(name, 0) + d.amount
+        
+    # Сортировка и форматирование
+    sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
+    
+    formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
+    
+    return jsonify(formatted_list)
 
 # --- Маршруты для виджетов и файлов ---
 @app.route('/alert/<int:user_id>')
@@ -594,10 +580,9 @@ def top_donators_widget(user_id):
     if not is_allowed:
         return f"Доступ запрещен. {message}", 403
     return render_template('top_donators.html', user_id=user_id)
-    
+
 @app.route('/top_donators_day/<int:user_id>')
 def top_donators_day_widget(user_id):
-    """Маршрут для нового виджета 'Топ донатов дня'."""
     user = User.query.get(user_id)
     if not user:
         return "Пользователь не найден", 404
@@ -605,7 +590,6 @@ def top_donators_day_widget(user_id):
     if not is_allowed:
         return f"Доступ запрещен. {message}", 403
     return render_template('top_donators_day.html', user_id=user_id)
-
 
 @app.route('/latest_donations/<int:user_id>')
 def latest_donations_widget(user_id):
@@ -651,7 +635,7 @@ def ws(ws):
 
     is_allowed, message = check_trial_status(user)
     if not is_allowed:
-        # Отправляем сообщение об ошибке, если аккаунт неактивен
+        # Отправляем сообщение об ошибке, если доступ запрещен
         try:
             ws.send(json.dumps({"type": "error", "message": message}))
         except Exception:
@@ -680,4 +664,5 @@ def ws(ws):
 if __name__ != '__main__':
     gevent.spawn(cleanup_tts_files)
     with app.app_context():
-        db.create_all() # Создает все таблицы, если их нет
+        # ИЗМЕНЕНИЕ: db.create_all() теперь нужно для инициализации БД
+        db.create_all()
