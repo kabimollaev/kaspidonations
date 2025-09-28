@@ -6,7 +6,7 @@
     <title>Панель управления донатами</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Montserrat:wght@400;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -28,14 +28,16 @@
         </div>
         {% endif %}
 
+        <div class="api-key-section">
+            <h3>Ваш персональный API ключ</h3>
+            <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
+            <p>Этот ключ понадобится для настройки приложения на вашем ПК.</p>
+        </div>
+
         <div class="download-agent-section">
             <h3>Приложение для ПК</h3>
             <p>Это приложение необходимо для отслеживания уведомлений с вашего телефона и их мгновенной отправки на стрим.</p>
             <a href="https://drive.google.com/file/d/141_12MNTbJGaUjt11qBWpONaavpblVgW/view?usp=sharing" class="btn btn-primary" target="_blank">Скачать приложение</a>
-             <div class="api-key-section" style="margin-top: 20px;">
-                <h4>Ваш персональный API ключ для приложения</h4>
-                <input type="text" id="api-key-input" value="{{ user.api_key }}" readonly>
-            </div>
         </div>
         
         <main class="main-grid">
@@ -58,6 +60,10 @@
                         <div class="form-group">
                             <label for="top-donators-day-url">Топ донатеров (День):</label>
                             <input type="text" id="top-donators-day-url" value="{{ url_for('top_donators_day_widget', user_id=user.id, _external=True) }}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="top-donators-month-url">Топ донатеров (Месяц):</label>
+                            <input type="text" id="top-donators-month-url" value="{{ url_for('top_donators_month_widget', user_id=user.id, _external=True) }}" readonly>
                         </div>
                         <div class="form-group">
                             <label for="latest-donations-url">Последние донаты:</label>
@@ -120,19 +126,11 @@
                 </div>
                 
                 <div class="card">
-                    <h3 class="card-title">Общие настройки</h3>
+                    <h3 class="card-title">Настройки оповещений</h3>
                     <form id="settings-form">
                         <div class="form-group">
                             <label for="min-amount">Мин. сумма для оповещения</label>
                             <input type="number" id="min-amount" name="min-amount" step="0.01">
-                        </div>
-                         <div class="form-group checkbox-group">
-                            <input type="checkbox" id="tts-enabled" name="tts-enabled" class="styled-checkbox">
-                            <label for="tts-enabled" class="checkbox-label">Включить озвучивание (TTS)</label>
-                        </div>
-                        <div class="form-group">
-                            <label for="tts-volume">Громкость (0.1 - 1.0)</label>
-                            <input type="range" id="tts-volume" name="tts-volume" min="0.1" max="1" step="0.1">
                         </div>
                          <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -193,4 +191,5 @@
     <script src="{{ url_for('static', filename='js/dashboard.js', v=cache_buster) }}"></script>
 </body>
 </html>
+
 

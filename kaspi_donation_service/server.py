@@ -71,8 +71,6 @@ class Goal(db.Model):
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
-    tts_enabled = db.Column(db.Boolean, nullable=False, default=True)
-    tts_volume = db.Column(db.Float, nullable=False, default=0.7)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
 
@@ -127,8 +125,6 @@ def get_full_update_message(user_id):
         goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
         settings_data = {
             'min_amount': settings.min_amount,
-            'tts_enabled': settings.tts_enabled,
-            'tts_volume': settings.tts_volume,
             'alert_url': '/static/media/alert.gif',
             'sound_url': '/static/media/alert.mp3',
         } if settings else {}
@@ -285,8 +281,11 @@ def get_all_data():
     full_update['data']['stats'] = get_donation_stats(user.id)
     return jsonify(full_update['data'])
 
-# УПРОЩЕНИЕ: Общая функция для отправки оповещений
 def send_donation_alert(user, donation):
+    # Проверяем, превышает ли сумма доната минимальную
+    if donation.amount < user.settings.min_amount:
+        return
+
     donation_data = {
         'id': donation.id, 
         'name': donation.name, 
@@ -294,15 +293,9 @@ def send_donation_alert(user, donation):
         'message': donation.message
     }
     
-    tts_text = None
-    if user.settings.tts_enabled and float(donation.amount) >= user.settings.min_amount:
-        tts_text = f"{donation.name} отправил {int(donation.amount)} тенге. Сообщение: {donation.message or 'без сообщения'}"
-
-    # Отправляем одно-единственное сообщение
     broadcast_to_user(user.id, {
         "type": "show_alert",
-        "data": donation_data,
-        "tts_text": tts_text
+        "data": donation_data
     })
 
 @app.route('/api/submit_donation', methods=['POST'])
@@ -340,8 +333,6 @@ def update_settings():
     user = g.user
     data = request.json
     user.settings.min_amount = float(data.get('min_amount', 0))
-    user.settings.tts_enabled = bool(data.get('tts_enabled'))
-    user.settings.tts_volume = float(data.get('tts_volume', 0.7))
     db.session.commit()
     broadcast_to_user(user.id, get_full_update_message(user.id))
     return jsonify({'status': 'success'})
@@ -400,7 +391,6 @@ def replay_donation(donation_id):
 @api_login_required
 def test_donation_api():
     user = g.user
-    # Создаем временный объект, похожий на `Donation`
     class MockDonation:
         id = f"test_{int(time.time())}"
         name = 'Тестер'
@@ -430,13 +420,40 @@ def update_phone_status():
 def get_daily_top_donators():
     user = g.user
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Получаем донаты только за сегодня
     donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= today_start).order_by(Donation.amount.desc()).all()
+    
+    # Агрегация по имени
     top_donators = {}
     for d in donations:
         name = d.name
         top_donators[name] = top_donators.get(name, 0) + d.amount
+        
+    # Сортировка и форматирование
     sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
+    
     formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
+    
+    return jsonify(formatted_list)
+
+@app.route('/api/get_monthly_top_donators', methods=['GET'])
+@api_login_required
+def get_monthly_top_donators():
+    user = g.user
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    donations = Donation.query.filter_by(user_id=user.id).filter(Donation.timestamp >= month_start).all()
+    
+    top_donators = {}
+    for d in donations:
+        name = d.name
+        top_donators[name] = top_donators.get(name, 0) + d.amount
+        
+    sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
+    
+    formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
+    
     return jsonify(formatted_list)
 
 # --- Маршруты для виджетов и файлов ---
@@ -479,6 +496,16 @@ def top_donators_day_widget(user_id):
     if not is_allowed:
         return f"Доступ запрещен. {message}", 403
     return render_template('top_donators_day.html', user_id=user_id)
+
+@app.route('/top_donators_month/<int:user_id>')
+def top_donators_month_widget(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return "Пользователь не найден", 404
+    is_allowed, message = check_trial_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return render_template('top_donators_month.html', user_id=user_id)
 
 @app.route('/latest_donations/<int:user_id>')
 def latest_donations_widget(user_id):
@@ -547,4 +574,5 @@ def ws(ws):
 # --- Запуск ---
 if __name__ != '__main__':
     pass
+
 

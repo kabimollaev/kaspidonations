@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Топ донатов месяца</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="widget-container">
+        <h3 class="widget-title">Топ донатов месяца</h3>
+        <div id="donators-list">
+            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const listElement = document.getElementById('donators-list');
+            let currentUser = null; // Store user for API requests
+
+            function escapeHtml(unsafe) {
+                return (unsafe || "").toString()
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            }
+            
+            async function fetchMonthlyTopDonators() {
+                try {
+                    // API endpoint is now relative
+                    const response = await fetch(`/api/get_monthly_top_donators`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    updateList(data);
+                } catch (error) {
+                    console.error("Ошибка при получении данных Top Donators Month:", error);
+                    listElement.innerHTML = '<p style="text-align: center; color: #dc3545;">Ошибка загрузки данных.</p>';
+                }
+            }
+            
+            function updateList(topDonators) {
+                if (!topDonators || topDonators.length === 0) {
+                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов в этом месяце пока нет.</p>';
+                    return;
+                }
+                
+                listElement.innerHTML = topDonators.map((d, index) => `
+                    <div class="donator-item" style="animation-delay: ${index * 100}ms">
+                        <span class="donator-rank">#${index + 1}</span>
+                        <span class="donator-name">${escapeHtml(d.name)}</span>
+                        <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
+                    </div>
+                `).join('');
+            }
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const user_id = "{{ user_id }}";
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                // We update the list on any full_update which happens after a donation
+                if (message.type === 'full_update') {
+                    fetchMonthlyTopDonators();
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(() => {
+                    // Re-establish connection
+                    const newWs = new WebSocket(ws.url);
+                    newWs.onmessage = ws.onmessage;
+                    newWs.onclose = ws.onclose;
+                }, 3000);
+            };
+
+            // Initial load
+            fetchMonthlyTopDonators();
+        });
+    </script>
+</body>
+</html>

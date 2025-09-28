@@ -19,8 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
         goalTitleInput: document.getElementById('goal-title'),
         goalTargetInput: document.getElementById('goal-target'),
         minAmountInput: document.getElementById('min-amount'),
-        ttsEnabledInput: document.getElementById('tts-enabled'),
-        ttsVolumeInput: document.getElementById('tts-volume'),
+        // ПОЛЯ TTS УДАЛЕНЫ
         apiKeyInput: document.getElementById('api-key-input')
     };
 
@@ -165,20 +164,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.minAmountInput) {
             elements.minAmountInput.value = settings.min_amount || 0;
-            elements.ttsEnabledInput.checked = settings.tts_enabled; // Убрано || false, т.к. сервер всегда должен присылать это поле
-            elements.ttsVolumeInput.value = settings.tts_volume || 0.7;
         }
     }
     
     function updateStats() {
         const stats = currentData.stats || {};
         if (stats) {
-            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today?.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today?.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month?.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month?.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total?.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total?.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month.count || 0} донатов`;
+            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total.sum || 0).toFixed(2)} ₸`;
+            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total.count || 0} донатов`;
         }
     }
 
@@ -209,8 +206,9 @@ document.addEventListener('DOMContentLoaded', function() {
         logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
         consoleEl.appendChild(logEntry);
         
-        if (consoleEl.children.length > 20) {
-            consoleEl.removeChild(consoleEl.children[0]);
+        const entries = consoleEl.querySelectorAll('.console-entry');
+        if (entries.length > 10) {
+            entries[0].remove();
         }
         
         consoleEl.scrollTop = consoleEl.scrollHeight;
@@ -222,6 +220,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
         ws.onopen = () => {
+            console.log('Соединение с WebSocket установлено.');
             logToConsole('Соединение с WebSocket установлено.', 'success');
         };
 
@@ -231,11 +230,13 @@ document.addEventListener('DOMContentLoaded', function() {
         };
 
         ws.onclose = () => {
+            console.log('Соединение с WebSocket закрыто. Попытка переподключения...');
             logToConsole('Соединение с WebSocket закрыто. Попытка переподключения...', 'error');
             setTimeout(connectWebSocket, 3000);
         };
 
         ws.onerror = (error) => {
+            console.error('WebSocket ошибка.', 'error');
             logToConsole('WebSocket ошибка.', 'error');
             ws.close();
         };
@@ -292,8 +293,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
                 const data = {
                     min_amount: parseFloat(elements.minAmountInput.value),
-                    tts_enabled: elements.ttsEnabledInput.checked,
-                    tts_volume: parseFloat(elements.ttsVolumeInput.value)
                 };
                 const result = await fetchApi('/update_settings', 'POST', data);
                 if (result && result.status === 'success') {
@@ -301,7 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-
+        
         if (elements.resetDonationsBtn) {
             elements.resetDonationsBtn.addEventListener('click', async () => {
                 console.log('[ACTION] Запрос на сброс истории донатов.');
@@ -314,22 +313,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (elements.testDonationBtn) {
             elements.testDonationBtn.addEventListener('click', async () => {
-                const btn = elements.testDonationBtn;
-                if (btn.disabled) return; 
-
-                btn.disabled = true;
-                const originalText = btn.textContent;
-                btn.textContent = 'Отправка...';
-
                 const result = await fetchApi('/test_donation', 'POST');
                 if (result && result.status === 'success') {
                     logToConsole('🧪 Тестовый донат отправлен', 'info');
                 }
-
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.textContent = originalText;
-                }, 5000); // Задержка 5 секунд, чтобы не спамить
             });
         }
     }

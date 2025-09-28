@@ -89,73 +89,50 @@
 <body>
     <div id="alert-container" class="alert-container"></div>
     <script>
-        // --- Глобальные переменные ---
         let ws;
         let alertQueue = [];
-        let isProcessingQueue = false;
+        let isShowingAlert = false;
         let currentSettings = {};
-        
+
         const alertContainer = document.getElementById('alert-container');
         const ALERT_DURATION = 8000;
         const audioPlayer = new Audio();
 
-        // --- Основная логика ---
         function connectWebSocket() {
             const userId = "{{ user_id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
             
             ws = new WebSocket(wsUrl);
+            
             ws.onopen = () => console.log("WebSocket connected.");
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
-            ws.onerror = () => ws.close();
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 
                 if (message.type === 'show_alert') {
-                    alertQueue.push(message);
-                    processQueue();
-                } else if (message.type === 'full_update' && !isProcessingQueue) {
+                    alertQueue.push(message.data);
+                    if (!isShowingAlert) {
+                        processQueue();
+                    }
+                } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
-                    preloadAssets(currentSettings);
                 }
             };
+            
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+            ws.onerror = (error) => ws.close();
         }
 
-        function preloadAssets(settings) {
-            // Предзагружаем только основной звук, т.к. озвучка генерируется на лету
-            if (settings.sound_url) {
-                audioPlayer.src = `${settings.sound_url}?v=${new Date().getTime()}`;
-            }
+        function processQueue() {
+            if (isShowingAlert || alertQueue.length === 0) return;
+            
+            isShowingAlert = true;
+            const data = alertQueue.shift();
+            
+            showAlert(data);
         }
 
-        async function processQueue() {
-            if (isProcessingQueue || alertQueue.length === 0) return;
-            isProcessingQueue = true;
-
-            const alertData = alertQueue.shift();
-            
-            // 1. Показываем визуальное оповещение
-            showAlert(alertData.data);
-            
-            // 2. Воспроизводим основной звук
-            await playSound(currentSettings.sound_url, currentSettings.tts_volume);
-            
-            // 3. Воспроизводим озвучку, если она есть
-            if (alertData.tts_text) {
-                await speakText(alertData.tts_text, currentSettings.tts_volume);
-            }
-
-            // 4. Прячем оповещение после небольшой задержки
-            setTimeout(() => {
-                hideAlert();
-                isProcessingQueue = false;
-                processQueue(); // Проверяем, есть ли еще алерты в очереди
-            }, ALERT_DURATION);
-        }
-
-        // --- Функции-помощники ---
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
@@ -171,47 +148,34 @@
                         ${messageText ? `<p class="alert-message">${messageText}</p>` : ''}
                     </div>
                 </div>`;
+            const alertBox = alertContainer.querySelector('.alert-box');
             
-            setTimeout(() => {
-                const alertBox = alertContainer.querySelector('.alert-box');
-                if (alertBox) alertBox.classList.add('visible');
-            }, 50);
-        }
+            // Воспроизводим звук
+            if (currentSettings.sound_url) {
+                audioPlayer.src = currentSettings.sound_url;
+                audioPlayer.play().catch(e => console.error("Audio play error:", e));
+            }
 
+            // Показываем визуальное оповещение
+            setTimeout(() => alertBox.classList.add('visible'), 50);
+
+            // Прячем оповещение и разрешаем следующее
+            setTimeout(hideAlert, ALERT_DURATION);
+        }
+        
         function hideAlert() {
             const alertBox = alertContainer.querySelector('.alert-box');
             if (alertBox) {
                 alertBox.classList.remove('visible');
-                setTimeout(() => alertContainer.innerHTML = '', 500);
+                setTimeout(() => {
+                     alertContainer.innerHTML = '';
+                     isShowingAlert = false;
+                     processQueue(); // Проверяем, есть ли еще алерты в очереди
+                }, 500);
+            } else {
+                isShowingAlert = false;
+                processQueue();
             }
-        }
-
-        function playSound(src, volume) {
-            return new Promise((resolve) => {
-                if (!src) return resolve();
-                audioPlayer.src = src;
-                audioPlayer.volume = volume || 0.7;
-                audioPlayer.play().catch(e => console.error("Ошибка звука:", e));
-                audioPlayer.onended = resolve;
-                audioPlayer.onerror = resolve;
-            });
-        }
-
-        function speakText(text, volume) {
-            return new Promise((resolve) => {
-                if (!text || !('speechSynthesis' in window)) return resolve();
-                
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ru-RU';
-                utterance.volume = volume || 0.7;
-                utterance.onend = resolve;
-                utterance.onerror = (e) => {
-                    console.error("Ошибка озвучки:", e);
-                    resolve();
-                };
-                window.speechSynthesis.speak(utterance);
-            });
         }
 
         function escapeHtml(unsafe) {
@@ -219,7 +183,6 @@
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
         
-        // --- Запуск ---
         connectWebSocket();
     </script>
 </body>
