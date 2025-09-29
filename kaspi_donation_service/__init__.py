@@ -49,13 +49,17 @@ def create_app():
         return db.session.get(User, int(user_id))
 
     # --- Регистрация Blueprints (ИСПРАВЛЕНО) ---
-    from .views import main, auth, admin, api, widgets
+    from .views.main import bp as main_bp
+    from .views.auth import bp as auth_bp
+    from .views.admin import bp as admin_bp
+    from .views.api import bp as api_bp
+    from .views.widgets import bp as widgets_bp
     
-    app.register_blueprint(main.bp)
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(admin.bp)
-    app.register_blueprint(api.bp)
-    app.register_blueprint(widgets.bp)
+    app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(widgets_bp)
 
     return app
 
