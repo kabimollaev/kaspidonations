@@ -8,15 +8,6 @@
 {% block content %}
 <div class="container">
     <h1>Панель администратора</h1>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="flash-{{ category }}">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
     <table class="user-table">
         <thead>
             <tr>
@@ -24,7 +15,7 @@
                 <th>Имя пользователя</th>
                 <th>Роль</th>
                 <th>Статус</th>
-                <th>Действия</th>
+                <th>Действие</th>
             </tr>
         </thead>
         <tbody>
@@ -33,7 +24,8 @@
                 <td>{{ u.id }}</td>
                 <td>{{ u.username }}</td>
                 <td>
-                    <form action="{{ url_for('update_user', user_id=u.id) }}" method="post" style="display: inline-block;">
+                    <!-- ИСПРАВЛЕНО: 'update_user' -> 'admin.update_user' -->
+                    <form action="{{ url_for('admin.update_user', user_id=u.id) }}" method="post" class="update-form">
                         <select name="role" class="form-control">
                             <option value="user" {% if u.role == 'user' %}selected{% endif %}>User</option>
                             <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
@@ -46,21 +38,83 @@
                         </select>
                     </td>
                     <td>
-                        <div style="display: flex; gap: 10px;">
+                        <div class="action-buttons">
                             <button type="submit" class="btn-update">Обновить</button>
                     </form>
-                        {% if u.id != current_user.id %}
-                        <form action="{{ url_for('delete_user', user_id=u.id) }}" method="post" style="display: inline-block;">
-                             <button type="submit" class="btn-delete">Удалить</button>
-                        </form>
-                        {% endif %}
-                        </div>
+                    <!-- Кнопка удаления -->
+                    <button class="btn-delete" data-user-id="{{ u.id }}" data-username="{{ u.username }}">Удалить</button>
+                </div>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    <a href="{{ url_for('dashboard') }}" class="back-link">Вернуться в панель управления</a>
+    <!-- ИСПРАВЛЕНО: 'dashboard' -> 'main.dashboard' -->
+    <a href="{{ url_for('main.dashboard') }}" class="back-link">Вернуться в панель управления</a>
 </div>
+
+<!-- Модальное окно для подтверждения -->
+<div id="confirm-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal">
+        <h3 id="modal-title">Подтвердите удаление</h3>
+        <p id="modal-text">Вы уверены, что хотите удалить этого пользователя?</p>
+        <div class="modal-actions">
+            <button id="modal-confirm-btn" class="btn btn-danger">Удалить</button>
+            <button id="modal-cancel-btn" class="btn btn-secondary">Отмена</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('confirm-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalText = document.getElementById('modal-text');
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+    let userIdToDelete = null;
+
+    document.querySelectorAll('.btn-delete').forEach(button => {
+        button.addEventListener('click', function() {
+            userIdToDelete = this.dataset.userId;
+            const username = this.dataset.username;
+            modalTitle.textContent = `Удалить пользователя ${username}?`;
+            modalText.textContent = `Вы уверены, что хотите навсегда удалить пользователя '${username}'? Это действие необратимо.`;
+            modal.style.display = 'flex';
+        });
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+        userIdToDelete = null;
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+        if (userIdToDelete) {
+            try {
+                // ИСПРАВЛЕНО: 'delete_user' -> 'admin.delete_user'
+                const response = await fetch(`/admin/delete_user/${userIdToDelete}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message); // Простое оповещение
+                    window.location.reload();
+                } else {
+                    alert('Ошибка: ' + result.message);
+                }
+            } catch (error) {
+                alert('Сетевая ошибка при удалении пользователя.');
+            } finally {
+                modal.style.display = 'none';
+                userIdToDelete = null;
+            }
+        }
+    });
+});
+</script>
 {% endblock %}
 

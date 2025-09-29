@@ -14,7 +14,6 @@
         <div class="auth-container">
             <div class="auth-box">
                 <h2>Создание аккаунта</h2>
-                <!-- ИЗМЕНЕНИЕ: Убрана фраза о бесплатном периоде -->
                 <p>Пройдите регистрацию, чтобы получить данные для активации.</p>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -36,9 +35,11 @@
                     </div>
                     <button type="submit" class="auth-button">Зарегистрироваться</button>
                 </form>
-                <p class="auth-switch">Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+                <!-- ИСПРАВЛЕНО: 'login' -> 'auth.login' -->
+                <p class="auth-switch">Уже есть аккаунт? <a href="{{ url_for('auth.login') }}">Войти</a></p>
             </div>
         </div>
     </div>
 </body>
 </html>
+

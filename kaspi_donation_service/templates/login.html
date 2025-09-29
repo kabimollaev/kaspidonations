@@ -35,7 +35,8 @@
                     </div>
                     <button type="submit" class="auth-button">Войти</button>
                 </form>
-                <p class="auth-switch">Еще нет аккаунта? <a href="{{ url_for('register') }}">Создать</a></p>
+                <!-- ИСПРАВЛЕНО: 'register' -> 'auth.register' -->
+                <p class="auth-switch">Еще нет аккаунта? <a href="{{ url_for('auth.register') }}">Создать</a></p>
             </div>
         </div>
     </div>

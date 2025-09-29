@@ -41,8 +41,10 @@
                 <a href="#contact">Контакты</a>
             </nav>
             <div class="header-actions">
-                <a href="{{ url_for('login') }}" class="btn btn-secondary">Вход</a>
-                <a href="{{ url_for('register') }}" class="btn btn-primary">Регистрация</a>
+                <!-- ИСПРАВЛЕНО: 'login' -> 'auth.login' -->
+                <a href="{{ url_for('auth.login') }}" class="btn btn-secondary">Вход</a>
+                <!-- ИСПРАВЛЕНО: 'register' -> 'auth.register' -->
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Регистрация</a>
             </div>
         </div>
     </header>
@@ -52,7 +54,6 @@
             <div class="container">
                 <h1>Принимайте донаты с Kaspi.kz прямо на стриме</h1>
                 <p class="subtitle">Увеличьте интерактивность ваших трансляций с помощью мгновенных оповещений, гибко настраиваемых виджетов и голосового озвучивания донатов с Kaspi. Приобретите доступ, чтобы начать работу.</p>
-                <!-- УДАЛЕНА кнопка "Попробовать бесплатно 14 дней" -->
                 <a href="#pricing" class="btn btn-primary btn-lg">Посмотреть цены</a>
             </div>
         </section>
@@ -100,7 +101,6 @@
                             <li>Приложение для отслеживания уведомлений</li>
                             <li>Ежемесячное списание</li>
                         </ul>
-                        <!-- ИЗМЕНЕНИЕ: Ссылка на Telegram -->
                         <a href="https://t.me/khakimn" target="_blank" class="btn btn-secondary btn-block">Написать в Telegram</a>
                     </div>
                     
@@ -114,7 +114,6 @@
                             <li>Приложение для отслеживания уведомлений</li>
                             <li>**Пожизненный доступ и обновления**</li>
                         </ul>
-                        <!-- ИЗМЕНЕНИЕ: Ссылка на Telegram -->
                         <a href="https://t.me/khakimn" target="_blank" class="btn btn-primary btn-block">Купить через Telegram</a>
                     </div>
                 </div>
@@ -138,3 +137,4 @@
 
 </body>
 </html>
+
