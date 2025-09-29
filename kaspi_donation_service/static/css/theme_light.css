@@ -1,0 +1,9 @@
+/* Светлая тема */
+:root {
+    --primary-color: #F14635;
+    --dark-bg: #F4F4F4; /* Светлый фон */
+    --card-bg-transparent: rgba(255, 255, 255, 0.9); /* Белая карточка */
+    --text-light: #1A1A1A; /* Темный текст */
+    --text-muted: #555555;
+    --border-color: #DDDDDD;
+}
