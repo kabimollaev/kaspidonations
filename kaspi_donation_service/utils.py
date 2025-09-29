@@ -2,8 +2,8 @@ import json
 from functools import wraps
 from flask import g, request, jsonify
 from flask_login import current_user
-from . import clients, PHONE_STATUS
-from .models import User
+from . import clients, PHONE_STATUS, db
+from .models import User, Donation
 
 def check_user_status(user):
     """Проверяет, активен ли пользователь."""
@@ -16,11 +16,9 @@ def api_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = None
-        # Проверка по сессии (для браузера)
         if current_user.is_authenticated:
             user = current_user
         else:
-            # Проверка по API-ключу (для приложения на ПК)
             api_key = request.headers.get('X-API-Key')
             if not api_key:
                 return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
@@ -45,3 +43,34 @@ def broadcast_to_user(user_id, message_data):
                 ws.send(message_str)
             except Exception:
                 clients[user_id].remove(ws)
+
+def get_full_update_message(user_id):
+    """Собирает полное состояние данных для пользователя."""
+    user = db.session.get(User, user_id)
+    if not user: return {}
+
+    donations = user.donations.order_by(Donation.timestamp.desc()).all()
+    goal = user.goal
+    settings = user.settings
+    stats = user.get_donation_stats()
+
+    donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
+    goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
+    
+    settings_data = {
+        'min_amount': settings.min_amount if settings else 100.0,
+        'alert_url': '/static/media/alert.gif',
+        'sound_url': '/static/media/alert.mp3',
+        'widget_theme': 'dark' # Временно жестко задаем темную тему
+    }
+    
+    phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
+
+    return {
+        "donations": donations_list, 
+        "goal": goal_data, 
+        "settings": settings_data, 
+        "phone_status": phone_status_data,
+        "stats": stats
+    }
+
