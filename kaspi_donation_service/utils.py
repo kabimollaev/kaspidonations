@@ -61,7 +61,7 @@ def get_full_update_message(user_id):
         'min_amount': settings.min_amount if settings else 100.0,
         'alert_url': '/static/media/alert.gif',
         'sound_url': '/static/media/alert.mp3',
-        'widget_theme': 'dark' # Временно жестко задаем темную тему
+        'widget_theme': settings.widget_theme if settings else 'dark'
     }
     
     phone_status_data = PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"})
@@ -73,4 +73,3 @@ def get_full_update_message(user_id):
         "phone_status": phone_status_data,
         "stats": stats
     }
-

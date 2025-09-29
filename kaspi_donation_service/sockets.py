@@ -11,7 +11,6 @@ def ws(ws):
     """Основной маршрут для WebSocket соединений."""
     user_id = request.args.get('user_id', type=int)
     
-    # Если user_id не передан, пытаемся получить его из сессии
     if not user_id and current_user.is_authenticated:
         user_id = current_user.id
     
@@ -24,7 +23,6 @@ def ws(ws):
         ws.close()
         return
 
-    # Проверка статуса пользователя
     is_allowed, message = check_user_status(user)
     if not is_allowed:
         try:
@@ -34,17 +32,14 @@ def ws(ws):
         ws.close()
         return
         
-    # Регистрация клиента
     if user_id not in clients:
         clients[user_id] = set()
     clients[user_id].add(ws)
     print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
 
     try:
-        # Отправляем полное состояние при подключении
-        ws.send(json.dumps({"type": "full_update", "data": get_full_update_message(user.id)}, ensure_ascii=False))
+        ws.send(json.dumps({"type": "full_update", "data": get_full_update_message(user_id)}, ensure_ascii=False))
         
-        # Цикл для поддержания соединения
         while True:
             gevent.sleep(25)
             try:
@@ -52,7 +47,6 @@ def ws(ws):
             except Exception:
                 break 
     finally:
-        # Удаление клиента при отключении
         if user_id in clients and ws in clients[user_id]:
             clients[user_id].remove(ws)
         print(f"🔌 WebSocket client disconnected for user {user_id}.")
