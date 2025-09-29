@@ -1,11 +1,20 @@
-from kaspi_donation_service import create_app
-import os
+from kaspi_donation_service import create_app, db
+from kaspi_donation_service.models import User, Donation, Goal, Settings
 
 app = create_app()
 
+# ИСПРАВЛЕНИЕ: Добавляем контекст приложения для командной строки
+@app.shell_context_processor
+def make_shell_context():
+    return {
+        "db": db,
+        "User": User,
+        "Donation": Donation,
+        "Goal": Goal,
+        "Settings": Settings
+    }
+
 if __name__ == '__main__':
-    # Используем порт из переменных окружения, что важно для Render.com
-    port = int(os.environ.get("PORT", 5000))
-    # Запускаем приложение через Gunicorn-совместимый способ
-    # В локальной среде Gunicorn не используется, Flask запустит свой сервер
-    app.run(host='0.0.0.0', port=port)
+    # Эта часть не используется на Render, но полезна для локального запуска
+    from kaspi_donation_service import sock
+    sock.run(app, debug=True)
