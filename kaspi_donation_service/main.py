@@ -12,9 +12,7 @@ def index():
 @bp.route('/dashboard')
 @login_required
 def dashboard():
-    # Получаем пользователя и его статистику
     user = current_user
-    stats = user.get_donation_stats()
     
     # Проверяем и создаем связанные записи, если они отсутствуют
     if not user.goal:
@@ -24,4 +22,4 @@ def dashboard():
         db.session.add(Settings(user_id=user.id))
         db.session.commit()
     
-    return render_template('dashboard.html', stats=stats)
+    return render_template('dashboard.html')

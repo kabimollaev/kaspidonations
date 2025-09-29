@@ -38,7 +38,7 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     sock.init_app(app)
-    migrate.init_app(app, db) # Инициализация Flask-Migrate
+    migrate.init_app(app, db)
 
     # Настройка LoginManager
     login_manager.login_view = 'auth.login'
@@ -48,7 +48,7 @@ def create_app():
     def load_user(user_id):
         return db.session.get(User, int(user_id))
 
-    # --- Регистрация Blueprints (ИСПРАВЛЕНО) ---
+    # --- Регистрация Blueprints ---
     from .main import bp as main_bp
     from .auth import bp as auth_bp
     from .admin import bp as admin_bp
@@ -61,5 +61,7 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(widgets_bp)
 
-    return app
+    # --- Регистрация WebSocket маршрута ---
+    from . import sockets
 
+    return app

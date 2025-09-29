@@ -68,4 +68,3 @@ class Settings(db.Model):
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
     widget_theme = db.Column('theme', db.String(50), nullable=False, server_default='dark') 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
-
