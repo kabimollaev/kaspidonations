@@ -4,8 +4,7 @@ Werkzeug
 Flask-SQLAlchemy
 Flask-Sock
 gunicorn
-gtts
-requests
 gevent
 greenlet
 psycopg2-binary
+Flask-Migrate
