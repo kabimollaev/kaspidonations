@@ -34,8 +34,8 @@ class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
     
-    # ИСПРАВЛЕНИЕ: Используем server_default для миграции на существующей базе данных
-    widget_theme = db.Column('theme', db.String(50), nullable=False, server_default='dark') 
+    # ИСПРАВЛЕНИЕ: Временно убираем поле widget_theme, чтобы избежать проблем с миграцией
+    # widget_theme = db.Column('theme', db.String(50), nullable=False, server_default='dark') 
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
