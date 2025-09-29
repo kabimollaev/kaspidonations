@@ -2,7 +2,7 @@
 {% block title %}Панель администратора{% endblock %}
 
 {% block head_extra %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css', v=cache_buster) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -24,7 +24,6 @@
                 <td>{{ u.id }}</td>
                 <td>{{ u.username }}</td>
                 <td>
-                    <!-- ИСПРАВЛЕНО: 'update_user' -> 'admin.update_user' -->
                     <form action="{{ url_for('admin.update_user', user_id=u.id) }}" method="post" class="update-form">
                         <select name="role" class="form-control">
                             <option value="user" {% if u.role == 'user' %}selected{% endif %}>User</option>
@@ -41,7 +40,6 @@
                         <div class="action-buttons">
                             <button type="submit" class="btn-update">Обновить</button>
                     </form>
-                    <!-- Кнопка удаления -->
                     <button class="btn-delete" data-user-id="{{ u.id }}" data-username="{{ u.username }}">Удалить</button>
                 </div>
                 </td>
@@ -49,7 +47,6 @@
             {% endfor %}
         </tbody>
     </table>
-    <!-- ИСПРАВЛЕНО: 'dashboard' -> 'main.dashboard' -->
     <a href="{{ url_for('main.dashboard') }}" class="back-link">Вернуться в панель управления</a>
 </div>
 
@@ -94,14 +91,13 @@ document.addEventListener('DOMContentLoaded', function() {
     confirmBtn.addEventListener('click', async () => {
         if (userIdToDelete) {
             try {
-                // ИСПРАВЛЕНО: 'delete_user' -> 'admin.delete_user'
                 const response = await fetch(`/admin/delete_user/${userIdToDelete}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
                 const result = await response.json();
                 if (response.ok) {
-                    alert(result.message); // Простое оповещение
+                    alert(result.message);
                     window.location.reload();
                 } else {
                     alert('Ошибка: ' + result.message);

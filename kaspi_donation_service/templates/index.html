@@ -7,26 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css', v=cache_buster) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
     <style>
-        /* ИСПРАВЛЕНИЕ: Добавляем стили для центрирования кнопок внутри карточек */
         .pricing-card {
-            display: flex; /* Делаем карточку флекс-контейнером */
-            flex-direction: column; /* Элементы идут сверху вниз */
-            justify-content: space-between; /* Распределяем пространство */
-            text-align: center; /* Центрируем текст внутри карточки */
-            height: 100%; /* Гарантируем одинаковую высоту, если контент разный */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            text-align: center;
+            height: 100%;
         }
         .pricing-card ul {
-            text-align: left; /* Возвращаем чекбоксы влево */
-            margin: 30px auto; /* Центрируем список, если он занимает не всю ширину */
-            max-width: 250px; /* Ограничиваем ширину списка для лучшей читаемости */
+            text-align: left;
+            margin: 30px auto;
+            max-width: 250px;
         }
-        /* Центрирование самой кнопки */
         .btn-block {
             display: block;
-            width: 90%; /* Кнопка занимает 90% ширины карточки */
-            margin: 0 auto 0; /* Центрируем кнопку по горизонтали */
+            width: 90%;
+            margin: 0 auto 0;
         }
     </style>
 </head>
@@ -41,9 +39,7 @@
                 <a href="#contact">Контакты</a>
             </nav>
             <div class="header-actions">
-                <!-- ИСПРАВЛЕНО: 'login' -> 'auth.login' -->
                 <a href="{{ url_for('auth.login') }}" class="btn btn-secondary">Вход</a>
-                <!-- ИСПРАВЛЕНО: 'register' -> 'auth.register' -->
                 <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Регистрация</a>
             </div>
         </div>
@@ -97,7 +93,6 @@
                         <p>Идеально для тех, кто хочет попробовать или использовать сервис на короткий срок.</p>
                         <ul>
                             <li>Все виды виджетов</li>
-                            <li>Голосовое озвучивание донатов (TTS)</li>
                             <li>Приложение для отслеживания уведомлений</li>
                             <li>Ежемесячное списание</li>
                         </ul>
@@ -110,7 +105,6 @@
                         <p>Единоразовая оплата за пожизненный доступ ко всем текущим и будущим функциям сервиса.</p>
                         <ul>
                             <li>Все виды виджетов (оповещения, сборы и т.д.)</li>
-                            <li>Голосовое озвучивание донатов (TTS)</li>
                             <li>Приложение для отслеживания уведомлений</li>
                             <li>**Пожизненный доступ и обновления**</li>
                         </ul>
