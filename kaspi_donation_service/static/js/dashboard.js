@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const API_URL = '/api';
+    // --- Глобальные переменные и элементы ---
+    const API_URL_PREFIX = '/api';
     let ws;
     let currentData = {};
-    
-    // --- Элементы DOM ---
+
     const elements = {
         addDonationForm: document.getElementById('add-donation-form'),
         goalForm: document.getElementById('goal-form'),
@@ -14,13 +14,16 @@ document.addEventListener('DOMContentLoaded', function() {
         topDonatorsList: document.getElementById('top-donators-list'),
         phoneStatusIndicator: document.getElementById('phone-status-indicator'),
         consoleOutput: document.getElementById('console-output'),
-        
-        // Поля форм
+        statsContainer: document.getElementById('stats-container'),
         goalTitleInput: document.getElementById('goal-title'),
         goalTargetInput: document.getElementById('goal-target'),
         minAmountInput: document.getElementById('min-amount'),
-        // ПОЛЯ TTS УДАЛЕНЫ
-        apiKeyInput: document.getElementById('api-key-input')
+        apiKeyInput: document.getElementById('api-key-input'),
+        modal: document.getElementById('confirm-modal'),
+        modalTitle: document.getElementById('modal-title'),
+        modalText: document.getElementById('modal-text'),
+        modalConfirmBtn: document.getElementById('modal-confirm-btn'),
+        modalCancelBtn: document.getElementById('modal-cancel-btn'),
     };
 
     // --- API запросы ---
@@ -32,49 +35,51 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-API-Key': elements.apiKeyInput ? elements.apiKeyInput.value : '' 
             },
         };
-        if (body) {
-            options.body = JSON.stringify(body);
-        }
+        if (body) options.body = JSON.stringify(body);
+        
         try {
-            const url = endpoint.startsWith(API_URL) ? endpoint : `${API_URL}${endpoint}`;
-            const response = await fetch(url, options);
+            const response = await fetch(`${API_URL_PREFIX}${endpoint}`, options);
             if (!response.ok) {
-                console.error(`Ошибка API: ${response.statusText}`);
-                const errorData = await response.json().catch(() => null);
-                logToConsole(`Ошибка API ${response.status}: ${errorData?.error || response.statusText}`, 'error');
+                const errorData = await response.json().catch(() => ({ error: 'Server error' }));
+                logToConsole(`Ошибка API ${response.status}: ${errorData.error}`, 'error');
                 return null;
             }
-            if (response.headers.get("Content-Type")?.includes("application/json")) {
-                return response.json();
-            }
-            return { status: 'success' };
+            return response.json();
         } catch (error) {
-            console.error('Сетевая ошибка:', error);
-            logToConsole('Сетевая ошибка. Проверьте консоль браузера.', 'error');
+            logToConsole('Сетевая ошибка. Проверьте консоль.', 'error');
+            console.error('Fetch error:', error);
             return null;
         }
     }
 
-    // --- Обновление статуса Phone Link ---
-    function updatePhoneStatus(status) {
-        if (!elements.phoneStatusIndicator) return;
-        
-        const indicator = elements.phoneStatusIndicator;
-        const dot = indicator.querySelector('.status-dot');
-        const text = indicator.querySelector('.status-text');
-        
-        if (!status || status.connected === undefined) {
-             dot.className = 'status-dot status-disconnected';
-             text.textContent = 'Нет данных';
-             return;
-        }
+    // --- WebSocket ---
+    function connectWebSocket() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // ИСПРАВЛЕНИЕ: Указываем правильный эндпоинт для WebSocket
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+        ws = new WebSocket(wsUrl);
 
-        if (status.connected) {
-            dot.className = 'status-dot status-connected';
-            text.textContent = status.message || 'Подключен';
-        } else {
-            dot.className = 'status-dot status-disconnected';
-            text.textContent = status.message || 'Отключен';
+        ws.onopen = () => logToConsole('Соединение с WebSocket установлено.', 'success');
+        ws.onmessage = (event) => handleWebSocketMessage(JSON.parse(event.data));
+        ws.onclose = () => {
+            logToConsole('Соединение потеряно. Переподключение...', 'error');
+            setTimeout(connectWebSocket, 3000);
+        };
+        ws.onerror = (error) => {
+            logToConsole('WebSocket ошибка.', 'error');
+            console.error('WebSocket error:', error);
+            ws.close();
+        };
+    }
+
+    function handleWebSocketMessage(message) {
+        if (message.type === 'full_update') {
+            currentData = message.data;
+            renderAll();
+        } else if (message.type === 'phone_status_update') {
+            updatePhoneStatus(message.data);
+        } else if (message.type === 'show_alert') {
+            logToConsole(`📢 Новый донат: ${message.data.name} - ${message.data.amount}₸`, 'success');
         }
     }
 
@@ -85,32 +90,17 @@ document.addEventListener('DOMContentLoaded', function() {
         renderTopDonators();
         updateForms();
         updateStats();
-        if (currentData.phone_status) {
-            updatePhoneStatus(currentData.phone_status);
-        } else {
-             updatePhoneStatus({ connected: undefined });
-        }
-    }
-
-    function escapeHtml(unsafe) {
-        if (typeof unsafe !== 'string') return '';
-        return unsafe
-             .replace(/&/g, "&amp;")
-             .replace(/</g, "&lt;")
-             .replace(/>/g, "&gt;")
-             .replace(/"/g, "&quot;")
-             .replace(/'/g, "&#039;");
+        updatePhoneStatus(currentData.phone_status);
     }
 
     function renderDonationsList() {
         const donations = currentData.donations || [];
-        const listEl = elements.donationsList;
-        if (!listEl) return;
+        if (!elements.donationsList) return;
         if (donations.length === 0) {
-            listEl.innerHTML = '<p>История донатов пуста.</p>';
+            elements.donationsList.innerHTML = '<p>История донатов пуста.</p>';
             return;
         }
-        listEl.innerHTML = donations.slice(0, 10).map(d => `
+        elements.donationsList.innerHTML = donations.slice(0, 10).map(d => `
             <div class="donation-item">
                 <div class="donation-item-header">
                     <span class="donation-name">${escapeHtml(d.name)}</span>
@@ -118,8 +108,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 ${d.message ? `<p class="donation-message">${escapeHtml(d.message)}</p>` : ''}
                 <div class="donation-actions">
-                    <button onclick="replayDonation(${d.id})" class="btn btn-sm btn-secondary">Повторить</button>
-                    <button onclick="deleteDonation(${d.id})" class="btn btn-sm btn-danger">Удалить</button>
+                    <button onclick="window.app.replayDonation(${d.id})" class="btn btn-sm btn-secondary">Повторить</button>
+                    <button onclick="window.app.deleteDonation(${d.id})" class="btn btn-sm btn-danger">Удалить</button>
                 </div>
             </div>
         `).join('');
@@ -127,24 +117,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function renderTopDonators() {
         const donations = currentData.donations || [];
-        const listEl = elements.topDonatorsList;
-        if (!listEl) return;
-    
+        if (!elements.topDonatorsList) return;
         const topDonators = donations.reduce((acc, d) => {
             acc[d.name] = (acc[d.name] || 0) + d.amount;
             return acc;
         }, {});
-    
-        const sorted = Object.entries(topDonators)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 10);
-    
+        const sorted = Object.entries(topDonators).sort(([,a],[,b]) => b-a).slice(0, 10);
         if (sorted.length === 0) {
-            listEl.innerHTML = '<p>Донатов пока нет.</p>';
+            elements.topDonatorsList.innerHTML = '<p>Донатов пока нет.</p>';
             return;
         }
-    
-        listEl.innerHTML = sorted.map(([name, amount], index) => `
+        elements.topDonatorsList.innerHTML = sorted.map(([name, amount], index) => `
             <div class="top-donator-item">
                 <span class="donator-rank">#${index + 1}</span>
                 <span class="donator-name">${escapeHtml(name)}</span>
@@ -156,103 +139,57 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateForms() {
         const settings = currentData.settings || {};
         const goal = currentData.goal || {};
-
-        if (elements.goalTitleInput) {
-            elements.goalTitleInput.value = goal.title || '';
-            elements.goalTargetInput.value = goal.target_amount || '';
-        }
-        
-        if (elements.minAmountInput) {
-            elements.minAmountInput.value = settings.min_amount || 0;
-        }
+        if (elements.goalTitleInput) elements.goalTitleInput.value = goal.title || '';
+        if (elements.goalTargetInput) elements.goalTargetInput.value = goal.target_amount || '';
+        if (elements.minAmountInput) elements.minAmountInput.value = settings.min_amount || 0;
     }
     
     function updateStats() {
         const stats = currentData.stats || {};
-        if (stats) {
-            document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = `${(stats.today.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(1) .stat-count').textContent = `${stats.today.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = `${(stats.month.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(2) .stat-count').textContent = `${stats.month.count || 0} донатов`;
-            document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = `${(stats.total.sum || 0).toFixed(2)} ₸`;
-            document.querySelector('.stat-item:nth-child(3) .stat-count').textContent = `${stats.total.count || 0} донатов`;
-        }
+        if (!elements.statsContainer) return;
+        elements.statsContainer.innerHTML = `
+            <div class="stat-item">
+                <span class="stat-label">Сегодня</span>
+                <span class="stat-value">${(stats.today?.sum || 0).toFixed(2)} ₸</span>
+                <span class="stat-count">${stats.today?.count || 0} донатов</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">За месяц</span>
+                <span class="stat-value">${(stats.month?.sum || 0).toFixed(2)} ₸</span>
+                <span class="stat-count">${stats.month?.count || 0} донатов</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Всего</span>
+                <span class="stat-value">${(stats.total?.sum || 0).toFixed(2)} ₸</span>
+                <span class="stat-count">${stats.total?.count || 0} донатов</span>
+            </div>
+        `;
     }
 
-    // --- Глобальные функции для кнопок ---
-    window.replayDonation = async function(donationId) {
-        const result = await fetchApi(`/api/replay_donation/${donationId}`, 'POST');
-        if (result && result.status === 'success') {
-            logToConsole(`🔄 Повторное воспроизведение доната #${donationId}`, 'info');
-        }
-    };
-
-    window.deleteDonation = async function(donationId) {
-        console.log(`[ACTION] Запрос на удаление доната #${donationId}`); 
-        const result = await fetchApi(`/api/delete_donation/${donationId}`, 'POST');
-        if (result && result.status === 'success') {
-            logToConsole(`🗑️ Донат #${donationId} удален`, 'info');
-        }
-    };
-
-    // --- Логирование в консоль ---
-    function logToConsole(message, type = 'info') {
-        const consoleEl = elements.consoleOutput;
-        if (!consoleEl) return;
-        
-        const timestamp = new Date().toLocaleTimeString('ru-RU');
-        const logEntry = document.createElement('div');
-        logEntry.className = `console-entry console-${type}`;
-        logEntry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
-        consoleEl.appendChild(logEntry);
-        
-        const entries = consoleEl.querySelectorAll('.console-entry');
-        if (entries.length > 10) {
-            entries[0].remove();
-        }
-        
-        consoleEl.scrollTop = consoleEl.scrollHeight;
+    function updatePhoneStatus(status) {
+        if (!elements.phoneStatusIndicator) return;
+        const dot = elements.phoneStatusIndicator.querySelector('.status-dot');
+        const text = elements.phoneStatusIndicator.querySelector('.status-text');
+        status = status || { connected: false, message: "Нет данных" };
+        dot.className = `status-dot ${status.connected ? 'status-connected' : 'status-disconnected'}`;
+        text.textContent = status.message || (status.connected ? 'Подключен' : 'Отключен');
     }
 
-    // --- WebSocket ---
-    function connectWebSocket() {
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+    // --- Модальное окно ---
+    function showConfirmationModal(title, text, onConfirm) {
+        elements.modalTitle.textContent = title;
+        elements.modalText.textContent = text;
+        elements.modal.style.display = 'flex';
+        
+        // Удаляем старые обработчики, чтобы избежать многократного вызова
+        const newConfirmBtn = elements.modalConfirmBtn.cloneNode(true);
+        elements.modalConfirmBtn.parentNode.replaceChild(newConfirmBtn, elements.modalConfirmBtn);
+        elements.modalConfirmBtn = newConfirmBtn;
 
-        ws.onopen = () => {
-            console.log('Соединение с WebSocket установлено.');
-            logToConsole('Соединение с WebSocket установлено.', 'success');
+        elements.modalConfirmBtn.onclick = () => {
+            onConfirm();
+            elements.modal.style.display = 'none';
         };
-
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            handleWebSocketMessage(message);
-        };
-
-        ws.onclose = () => {
-            console.log('Соединение с WebSocket закрыто. Попытка переподключения...');
-            logToConsole('Соединение с WebSocket закрыто. Попытка переподключения...', 'error');
-            setTimeout(connectWebSocket, 3000);
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket ошибка.', 'error');
-            logToConsole('WebSocket ошибка.', 'error');
-            ws.close();
-        };
-    }
-
-    // --- Обработчик сообщений WebSocket ---
-    function handleWebSocketMessage(message) {
-        if (message.type === 'full_update') {
-            currentData = message.data;
-            renderAll();
-        } else if (message.type === 'phone_status_update') {
-            updatePhoneStatus(message.data);
-        } else if (message.type === 'show_alert') {
-            logToConsole(`📢 Новый донат: ${message.data.name} - ${message.data.amount}₸`, 'success');
-            loadData();
-        }
     }
 
     // --- Обработчики событий ---
@@ -266,8 +203,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     amount: parseFloat(formData.get('amount')),
                     message: formData.get('message')
                 };
-                const result = await fetchApi('/add_manual_donation', 'POST', data);
-                if (result && result.status === 'success') {
+                if(await fetchApi('/add_manual_donation', 'POST', data)) {
                     logToConsole(`➕ Добавлен донат: ${data.name} - ${data.amount}₸`, 'success');
                     e.target.reset();
                 }
@@ -277,12 +213,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.goalForm) {
             elements.goalForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const data = {
-                    title: elements.goalTitleInput.value,
-                    target: parseFloat(elements.goalTargetInput.value)
-                };
-                const result = await fetchApi('/update_goal', 'POST', data);
-                if (result && result.status === 'success') {
+                const data = { title: elements.goalTitleInput.value, target: parseFloat(elements.goalTargetInput.value) };
+                if(await fetchApi('/update_goal', 'POST', data)) {
                     logToConsole(`🎯 Цель обновлена`, 'info');
                 }
             });
@@ -291,51 +223,77 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.settingsForm) {
             elements.settingsForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const data = {
-                    min_amount: parseFloat(elements.minAmountInput.value),
-                };
-                const result = await fetchApi('/update_settings', 'POST', data);
-                if (result && result.status === 'success') {
+                const data = { min_amount: parseFloat(elements.minAmountInput.value) };
+                if(await fetchApi('/update_settings', 'POST', data)) {
                     logToConsole(`⚙️ Настройки обновлены`, 'info');
                 }
             });
         }
-        
+
         if (elements.resetDonationsBtn) {
-            elements.resetDonationsBtn.addEventListener('click', async () => {
-                console.log('[ACTION] Запрос на сброс истории донатов.');
-                const result = await fetchApi('/reset_donations', 'POST');
-                if (result && result.status === 'success') {
-                    logToConsole(`🗑️ История донатов сброшена`, 'warning');
-                }
+            elements.resetDonationsBtn.addEventListener('click', () => {
+                showConfirmationModal(
+                    'Сброс донатов',
+                    'Вы уверены, что хотите удалить всю историю донатов и обнулить счетчик сбора?',
+                    async () => {
+                        if (await fetchApi('/reset_donations', 'POST')) {
+                            logToConsole(`🗑️ История донатов сброшена`, 'warning');
+                        }
+                    }
+                );
             });
         }
         
         if (elements.testDonationBtn) {
-            elements.testDonationBtn.addEventListener('click', async () => {
-                const result = await fetchApi('/test_donation', 'POST');
-                if (result && result.status === 'success') {
-                    logToConsole('🧪 Тестовый донат отправлен', 'info');
-                }
-            });
+            elements.testDonationBtn.addEventListener('click', () => fetchApi('/test_donation', 'POST'));
+        }
+
+        if (elements.modalCancelBtn) {
+            elements.modalCancelBtn.addEventListener('click', () => elements.modal.style.display = 'none');
         }
     }
 
-    // --- Загрузка данных ---
-    async function loadData() {
-        updatePhoneStatus({ connected: undefined });
-        
-        const data = await fetchApi('/get_all_data');
-        if (data) {
-            currentData = data;
-            renderAll();
+    // --- Вспомогательные функции ---
+    function logToConsole(message, type = 'info') {
+        if (!elements.consoleOutput) return;
+        const timestamp = new Date().toLocaleTimeString('ru-RU');
+        const entry = document.createElement('div');
+        entry.className = `console-entry console-${type}`;
+        entry.innerHTML = `<span class="console-time">[${timestamp}]</span> ${message}`;
+        elements.consoleOutput.appendChild(entry);
+        if (elements.consoleOutput.children.length > 50) {
+            elements.consoleOutput.removeChild(elements.consoleOutput.firstChild);
         }
+        elements.consoleOutput.scrollTop = elements.consoleOutput.scrollHeight;
     }
+
+    function escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') return '';
+        return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // --- Глобальный объект для кнопок в HTML ---
+    window.app = {
+        replayDonation: async (id) => {
+            if (await fetchApi(`/replay_donation/${id}`, 'POST')) {
+                logToConsole(`🔄 Повтор доната #${id}`, 'info');
+            }
+        },
+        deleteDonation: (id) => {
+            showConfirmationModal(
+                'Удаление доната',
+                `Вы уверены, что хотите удалить донат #${id}? Это действие необратимо.`,
+                async () => {
+                    if (await fetchApi(`/delete_donation/${id}`, 'POST')) {
+                        logToConsole(`🗑️ Донат #${id} удален`, 'info');
+                    }
+                }
+            );
+        }
+    };
 
     // --- Инициализация ---
     logToConsole('🚀 Панель управления загружена', 'info');
     connectWebSocket();
-    loadData();
     initEventListeners();
 });
-
