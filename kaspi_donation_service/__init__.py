@@ -49,17 +49,13 @@ def create_app():
         return db.session.get(User, int(user_id))
 
     # --- Регистрация Blueprints (ИСПРАВЛЕНО) ---
-    from kaspi_donation_service.views.main import bp as main_bp
-    from kaspi_donation_service.views.auth import bp as auth_bp
-    from kaspi_donation_service.views.admin import bp as admin_bp
-    from kaspi_donation_service.views.api import bp as api_bp
-    from kaspi_donation_service.views.widgets import bp as widgets_bp
+    from .views import main, auth, admin, api, widgets
     
-    app.register_blueprint(main_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(api_bp)
-    app.register_blueprint(widgets_bp)
+    app.register_blueprint(main.bp)
+    app.register_blueprint(auth.bp)
+    app.register_blueprint(admin.bp)
+    app.register_blueprint(api.bp)
+    app.register_blueprint(widgets.bp)
 
     return app
 
