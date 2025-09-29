@@ -1,55 +1,85 @@
-from flask import Blueprint, render_template, request, g
-from flask_login import current_user
-from .. import db, sock, clients
-from ..models import User, Settings
 import json
 import gevent
+from flask import Blueprint, render_template, request, jsonify
+from flask_login import current_user
+from . import db, sock, clients
+from .models import User
+from .api import get_full_update_message
+from .auth import check_account_status
 
 bp = Blueprint('widgets', __name__)
 
-def get_user_and_check_status(user_id):
+def widget_access_check(user_id):
     user = db.session.get(User, user_id)
     if not user:
-        return None, ("Пользователь не найден", 404)
-    if user.status != 'active' and user.role != 'admin':
-        return None, ("Доступ к виджету запрещен", 403)
-    return user, None
+        return "Пользователь не найден", 404
+    is_allowed, message = check_account_status(user)
+    if not is_allowed:
+        return f"Доступ запрещен. {message}", 403
+    return None, None # OK
 
 @bp.route('/alert/<int:user_id>')
 def alert_widget(user_id):
-    user, error = get_user_and_check_status(user_id)
-    if error: return error
-    return render_template('alert.html', user=user)
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('alert.html', user_id=user_id)
 
 @bp.route('/goal/<int:user_id>')
 def goal_widget(user_id):
-    user, error = get_user_and_check_status(user_id)
-    if error: return error
-    return render_template('goal.html', user=user)
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('goal.html', user_id=user_id)
 
-# ... Аналогичные маршруты для всех остальных виджетов ...
+@bp.route('/top_donators/<int:user_id>')
+def top_donators_widget(user_id):
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('top_donators.html', user_id=user_id)
+
+@bp.route('/top_donators_day/<int:user_id>')
+def top_donators_day_widget(user_id):
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('top_donators_day.html', user_id=user_id)
+
+@bp.route('/top_donators_month/<int:user_id>')
+def top_donators_month_widget(user_id):
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('top_donators_month.html', user_id=user_id)
+
+@bp.route('/latest_donations/<int:user_id>')
+def latest_donations_widget(user_id):
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('latest_donations.html', user_id=user_id)
+    
+@bp.route('/latest_donations_popout/<int:user_id>')
+def latest_donations_popout(user_id):
+    error_message, status_code = widget_access_check(user_id)
+    if error_message: return error_message, status_code
+    return render_template('latest_donations_popout.html', user_id=user_id)
 
 @sock.route('/ws')
 def ws(ws):
     user_id = request.args.get('user_id', type=int)
     if not user_id and current_user.is_authenticated:
         user_id = current_user.id
-    
-    if not user_id:
-        ws.close()
-        return
+    if not user_id: return
 
-    user, error = get_user_and_check_status(user_id)
-    if error:
+    error_message, _ = widget_access_check(user_id)
+    if error_message:
+        try:
+            ws.send(json.dumps({"type": "error", "message": error_message}))
+        except Exception: pass
         ws.close()
         return
         
     if user_id not in clients:
         clients[user_id] = set()
     clients[user_id].add(ws)
-    print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients.get(user_id, []))}")
+    print(f"🔗 WebSocket client connected for user {user_id}. Total: {len(clients[user_id])}")
     
-    from .api import get_full_update_message
     try:
         ws.send(json.dumps(get_full_update_message(user_id), ensure_ascii=False))
         while True:

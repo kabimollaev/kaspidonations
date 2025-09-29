@@ -1,14 +1,13 @@
 import uuid
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import login_user, logout_user, current_user
-from ..models import User, Goal, Settings
-from .. import db
+from flask_login import login_user, login_required, logout_user, current_user
+from . import db
+from .models import User, Goal, Settings
 
 bp = Blueprint('auth', __name__)
 
-def check_trial_status(user):
-    # Эта функция теперь тоже здесь для логической группировки
+def check_account_status(user):
     if user.role == 'admin' or user.status == 'active':
         return True, None
     else:
@@ -16,13 +15,17 @@ def check_trial_status(user):
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.dashboard'))
+    if current_user.is_authenticated: 
+        is_allowed, _ = check_account_status(current_user)
+        if is_allowed:
+            return redirect(url_for('main.dashboard'))
+        else:
+            logout_user() 
 
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form.get('username')).first()
         if user and check_password_hash(user.password_hash, request.form.get('password')):
-            is_allowed, message = check_trial_status(user)
+            is_allowed, message = check_account_status(user)
             if is_allowed:
                 login_user(user, remember=True)
                 return redirect(url_for('main.dashboard'))
@@ -34,8 +37,7 @@ def login():
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.dashboard'))
+    if current_user.is_authenticated: return redirect(url_for('main.dashboard'))
     if request.method == 'POST':
         if User.query.filter_by(username=request.form.get('username')).first():
             flash('Имя пользователя уже занято.', 'error')
@@ -45,7 +47,7 @@ def register():
                 username=request.form.get('username'),
                 password_hash=hashed_pw,
                 api_key=str(uuid.uuid4()),
-                status='inactive'
+                status='inactive',
             )
             db.session.add(new_user)
             db.session.commit()
@@ -53,12 +55,13 @@ def register():
             db.session.add(Goal(user_id=new_user.id))
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-            
+
             flash('Регистрация прошла успешно! Ваш аккаунт ожидает активации администратором.', 'success')
             return redirect(url_for('auth.login'))
     return render_template('register.html')
 
 @bp.route('/logout')
+@login_required
 def logout():
     logout_user()
-    return redirect(url_for('main.index'))
+    return redirect(url_for('auth.login'))
