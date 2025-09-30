@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, g, request
-from . import db, PHONE_STATUS
+from . import db
 from .models import Donation
 from .utils import api_login_required, broadcast_to_user, get_full_update_message
 import time
@@ -132,35 +132,10 @@ def update_phone_status():
     broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
     return jsonify({'status': 'success'})
 
-@bp.route('/get_daily_top_donators', methods=['GET'])
-@api_login_required
-def get_daily_top_donators():
-    user = g.user
-    donations = user.get_donations_by_period('day')
-    
-    top_donators = {}
-    for d in donations:
-        name = d.name
-        top_donators[name] = top_donators.get(name, 0) + d.amount
-        
-    sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
-    formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
-    
-    return jsonify({'top_donators_day': formatted_list})
+# УДАЛЕНО: Больше не нужны, так как логика перенесена на клиент
+# @bp.route('/get_daily_top_donators', methods=['GET'])
+# ...
 
-@bp.route('/get_monthly_top_donators', methods=['GET'])
-@api_login_required
-def get_monthly_top_donators():
-    user = g.user
-    donations = user.get_donations_by_period('month')
-
-    top_donators = {}
-    for d in donations:
-        name = d.name
-        top_donators[name] = top_donators.get(name, 0) + d.amount
-    
-    sorted_top = sorted(top_donators.items(), key=lambda item: item[1], reverse=True)
-    formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
-    
-    return jsonify({'top_donators_month': formatted_list})
+# @bp.route('/get_monthly_top_donators', methods=['GET'])
+# ...
 

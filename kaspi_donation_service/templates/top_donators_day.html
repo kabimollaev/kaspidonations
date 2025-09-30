@@ -1,89 +1,74 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Топ донатов дня</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-</head>
-<body>
-    <div class="widget-container">
-        <h3 class="widget-title">Топ дня</h3>
-        <div id="donators-list">
-            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
-        </div>
-    </div>
+{% extends "widget_base.html" %}
+{% block title %}Топ дня{% endblock %}
+{% block widget_title %}Топ дня{% endblock %}
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const listElement = document.getElementById('donators-list');
-            const user_id = "{{ user_id }}";
+{% block content %}
+<div id="donators-list">
+    <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+</div>
+{% endblock %}
 
-            function escapeHtml(unsafe) {
-                return (unsafe || "").toString()
-                     .replace(/&/g, "&amp;")
-                     .replace(/</g, "&lt;")
-                     .replace(/>/g, "&gt;")
-                     .replace(/"/g, "&quot;")
-                     .replace(/'/g, "&#039;");
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const listElement = document.getElementById('donators-list');
+        const userId = "{{ user_id }}";
+        const apiKey = "{{ api_key }}";
+
+        function updateList(donations) {
+            // ФИЛЬТРАЦИЯ НА СТОРОНЕ КЛИЕНТА
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const dailyDonations = donations.filter(d => {
+                const donationDate = new Date(d.timestamp);
+                return donationDate >= today;
+            });
+
+            const topDonators = dailyDonations.reduce((acc, d) => {
+                acc[d.name] = (acc[d.name] || 0) + d.amount;
+                return acc;
+            }, {});
+
+            const sorted = Object.entries(topDonators)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10);
+
+            if (sorted.length === 0) {
+                listElement.innerHTML = '<p style="text-align: center; color: var(--text-muted);">Донатов сегодня пока нет.</p>';
+                return;
             }
             
-            async function fetchDailyTopDonators() {
-                try {
-                    // ИСПРАВЛЕНИЕ: Используем user_id в URL для упрощенной аутентификации
-                    const response = await fetch(`/api/get_daily_top_donators?user_id=${user_id}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    const data = await response.json();
-                    updateList(data.top_donators_day);
-                } catch (error) {
-                    console.error("Ошибка при получении данных Top Donators Day:", error);
-                    listElement.innerHTML = '<p style="text-align: center; color: #dc3545;">Ошибка загрузки данных.</p>';
-                    // ИСПРАВЛЕНИЕ: Повторная попытка через 5 секунд
-                    setTimeout(fetchDailyTopDonators, 5000);
-                }
-            }
-            
-            function updateList(topDonators) {
-                if (!topDonators || topDonators.length === 0) {
-                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов сегодня пока нет.</p>';
-                    return;
-                }
-                
-                listElement.innerHTML = topDonators.map((d, index) => `
-                    <div class="donator-item" style="animation-delay: ${index * 100}ms">
-                        <span class="donator-rank">#${index + 1}</span>
-                        <span class="donator-name">${escapeHtml(d.name)}</span>
-                        <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
-                    </div>
-                `).join('');
-            }
-            
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+            listElement.innerHTML = sorted.map(([name, amount], index) => `
+                <div class="donator-item" style="animation-delay: ${index * 100}ms">
+                    <span class="donator-rank">#${index + 1}</span>
+                    <span class="donator-name">${escapeHtml(name)}</span>
+                    <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
+                </div>
+            `).join('');
+        }
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}&api_key=${apiKey}`;
+        
+        function connect() {
+            const ws = new WebSocket(wsUrl);
 
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    // Принудительно обновляем данные при любом донате
-                    fetchDailyTopDonators();
+                    updateTheme(message.data.settings.widget_theme);
+                    updateList(message.data.donations);
                 }
             };
 
             ws.onclose = () => {
-                setTimeout(() => {
-                    const newWs = new WebSocket(ws.url);
-                    newWs.onmessage = ws.onmessage;
-                    newWs.onclose = ws.onclose;
-                }, 3000);
+                setTimeout(connect, 3000);
             };
+        }
 
-            // Initial load
-            fetchDailyTopDonators();
-        });
-    </script>
-</body>
-</html>
+        connect();
+    });
+</script>
+{% endblock %}
+
