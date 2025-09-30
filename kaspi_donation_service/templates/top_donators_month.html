@@ -1,10 +1,12 @@
 {% extends "widget_base.html" %}
 {% block title %}Топ месяца{% endblock %}
-{% block widget_title %}Топ месяца{% endblock %}
 
 {% block content %}
-<div id="donators-list">
-    <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+<div class="widget-container">
+    <h2 class="widget-title">Топ месяца</h2>
+    <div id="donators-list">
+        <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+    </div>
 </div>
 {% endblock %}
 
@@ -39,11 +41,8 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    // ИСПРАВЛЕНИЕ 1: Добавлен вызов updateTheme (обернут в проверку)
-                    if (typeof updateTheme === 'function') {
-                        updateTheme(message.data.settings.widget_theme);
-                    }
-                    // ИСПРАВЛЕНИЕ 2: Берем готовый список из 'top_donators.month'
+                    // ИСПРАВЛЕНО: Берем готовый список из 'top_donators.month'
+                    if (typeof updateTheme === 'function') { updateTheme(message.data.settings.widget_theme); }
                     updateList(message.data.top_donators.month);
                 }
             };

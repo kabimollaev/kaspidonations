@@ -1,10 +1,12 @@
 {% extends "widget_base.html" %}
 {% block title %}Топ дня{% endblock %}
-{% block widget_title %}Топ дня{% endblock %}
 
 {% block content %}
-<div id="donators-list">
-    <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+<div class="widget-container">
+    <h2 class="widget-title">Топ дня</h2>
+    <div id="donators-list">
+        <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+    </div>
 </div>
 {% endblock %}
 
@@ -39,11 +41,8 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    // ИСПРАВЛЕНО: Оборачиваем вызов в проверку
-                    if (typeof updateTheme === 'function') {
-                        updateTheme(message.data.settings.widget_theme);
-                    }
-                    // ИСПРАВЛЕНИЕ: Берем готовый список из 'top_donators.day'
+                    if (typeof updateTheme === 'function') { updateTheme(message.data.settings.widget_theme); }
+                    // ИСПРАВЛЕНО: Берем готовый список из 'top_donators.day'
                     updateList(message.data.top_donators.day);
                 }
             };
