@@ -47,6 +47,23 @@ class User(UserMixin, db.Model):
         else: # all time
             return self.donations.order_by(Donation.amount.desc()).all()
 
+    # ИСПРАВЛЕНИЕ: Добавляем недостающую функцию
+    def get_top_donators(self, period='all', limit=10):
+        """Возвращает сгруппированных топ донаторов за определенный период."""
+        query = db.session.query(
+            Donation.name,
+            func.sum(Donation.amount).label('total_amount')
+        ).filter(Donation.user_id == self.id)
+
+        if period == 'day':
+            start_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(Donation.timestamp >= start_date)
+        elif period == 'month':
+            start_date = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(Donation.timestamp >= start_date)
+        
+        return query.group_by(Donation.name).order_by(func.sum(Donation.amount).desc()).limit(limit).all()
+
 
 class Donation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -66,9 +83,6 @@ class Goal(db.Model):
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_amount = db.Column(db.Float, nullable=False, default=100.0)
-    
-    # ИСПРАВЛЕНИЕ: Временно убираем поле widget_theme, чтобы избежать проблем с миграцией
-    # widget_theme = db.Column('theme', db.String(50), nullable=False, server_default='dark') 
-
+    widget_theme = db.Column('theme', db.String(50), nullable=False, server_default='dark') 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
