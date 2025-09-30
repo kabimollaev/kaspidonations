@@ -39,7 +39,10 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    updateTheme(message.data.settings.widget_theme);
+                    // ИСПРАВЛЕНО: Оборачиваем вызов в проверку
+                    if (typeof updateTheme === 'function') {
+                        updateTheme(message.data.settings.widget_theme);
+                    }
                     // ИСПРАВЛЕНИЕ: Берем готовый список из 'top_donators.day'
                     updateList(message.data.top_donators.day);
                 }
@@ -54,4 +57,3 @@
     });
 </script>
 {% endblock %}
-

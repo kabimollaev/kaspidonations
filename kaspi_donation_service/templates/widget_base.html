@@ -1,24 +1,60 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>{% block title %}Виджет{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
-    
-    <!-- Основные стили -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    
-    <!-- Стили темы (если выбрана не темная по умолчанию) -->
-    {% if user.settings.theme and user.settings.theme != 'dark' %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme_' + user.settings.theme + '.css') }}">
-    {% endif %}
+{% extends "widget_base.html" %}
+{% block title %}Топ месяца{% endblock %}
+{% block widget_title %}Топ месяца{% endblock %}
 
-    {% block head_extra %}{% endblock %}
-</head>
-<body>
-    {% block content %}{% endblock %}
-    {% block scripts %}{% endblock %}
-</body>
-</html>
+{% block content %}
+<div id="donators-list">
+    <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const listElement = document.getElementById('donators-list');
+        const userId = "{{ user.id }}";
+        const apiKey = "{{ user.api_key }}";
+
+        function updateList(topDonators) {
+            if (!topDonators || topDonators.length === 0) {
+                listElement.innerHTML = '<p style="text-align: center; color: var(--text-muted);">Донатов в этом месяце пока нет.</p>';
+                return;
+            }
+            
+            // Используем глобальную escapeHtml из widget_base.html
+            listElement.innerHTML = topDonators.map((d, index) => `
+                <div class="donator-item" style="animation-delay: ${index * 100}ms">
+                    <span class="donator-rank">#${index + 1}</span>
+                    <span class="donator-name">${escapeHtml(d.name)}</span>
+                    <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
+                </div>
+            `).join('');
+        }
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}&api_key=${apiKey}`;
+        
+        function connect() {
+            const ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'full_update') {
+                    // ИСПРАВЛЕНИЕ 1: Добавлен вызов updateTheme (обернут в проверку)
+                    if (typeof updateTheme === 'function') {
+                        updateTheme(message.data.settings.widget_theme);
+                    }
+                    // ИСПРАВЛЕНИЕ 2: Берем готовый список из 'top_donators.month'
+                    updateList(message.data.top_donators.month);
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(connect, 3000);
+            };
+        }
+        
+        connect();
+    });
+</script>
+{% endblock %}

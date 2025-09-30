@@ -39,7 +39,11 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
-                    // ИСПРАВЛЕНИЕ: Берем готовый список из 'top_donators.month'
+                    // ИСПРАВЛЕНИЕ 1: Добавлен вызов updateTheme (обернут в проверку)
+                    if (typeof updateTheme === 'function') {
+                        updateTheme(message.data.settings.widget_theme);
+                    }
+                    // ИСПРАВЛЕНИЕ 2: Берем готовый список из 'top_donators.month'
                     updateList(message.data.top_donators.month);
                 }
             };
