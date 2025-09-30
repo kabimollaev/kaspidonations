@@ -4,16 +4,14 @@
     <meta charset="UTF-8">
     <title>{% block title %}Виджет{% endblock %}</title>
     
-    <!-- ДОБАВЛЕНО: Базовый путь для надежной загрузки статики в OBS/браузерах -->
-    <!-- Это гарантирует, что /static/css/main.css всегда будет запрашиваться правильно -->
-    <base href="{{ request.url_root }}">
+    <!-- УДАЛЕНО: base href, так как он конфликтует с url_for -->
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
     
-    <!-- Основные стили. Путь изменен на относительный /static/... -->
-    <link rel="stylesheet" href="static/css/main.css">
+    <!-- Основные стили - ИСПРАВЛЕНО: используем url_for для надежности -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     
     <!-- Стили темы (если выбрана не темная по умолчанию) -->
     {% if user.settings.theme and user.settings.theme != 'dark' %}
@@ -39,11 +37,13 @@
             if (typeof theme !== 'string') return;
             
             const currentThemeLink = document.getElementById('widget-theme-link');
-            // Здесь используем 'static/css/theme_' + theme + ".css" вместо url_for, 
-            // чтобы path совпадал с base href
+            // ИСПРАВЛЕНО: Передаем функцию url_for внутрь JS, чтобы генерировать полные пути
+            // Примечание: Эта строка генерируется Jinja в момент рендеринга страницы.
+            const urlForStaticBase = "{{ url_for('static', filename='') }}";
+            
             const themeUrl = theme === 'dark' 
                 ? null 
-                : "static/css/theme_" + theme + ".css";
+                : urlForStaticBase + "css/theme_" + theme + ".css";
 
             if (themeUrl && theme !== 'dark') {
                 if (currentThemeLink) {
