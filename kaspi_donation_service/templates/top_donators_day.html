@@ -6,7 +6,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
     <div class="widget-container">
@@ -19,7 +19,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const listElement = document.getElementById('donators-list');
-            const user_id = window.location.pathname.split('/')[2] || '1';
+            const user_id = "{{ user_id }}";
 
             function escapeHtml(unsafe) {
                 return (unsafe || "").toString()
@@ -32,10 +32,8 @@
             
             async function fetchDailyTopDonators() {
                 try {
-                    const response = await fetch(`/api/get_daily_top_donators`, {
-                        method: 'GET',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+                    // ИСПРАВЛЕНИЕ: Используем user_id в URL для упрощенной аутентификации
+                    const response = await fetch(`/api/get_daily_top_donators?user_id=${user_id}`);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
@@ -44,6 +42,8 @@
                 } catch (error) {
                     console.error("Ошибка при получении данных Top Donators Day:", error);
                     listElement.innerHTML = '<p style="text-align: center; color: #dc3545;">Ошибка загрузки данных.</p>';
+                    // ИСПРАВЛЕНИЕ: Повторная попытка через 5 секунд
+                    setTimeout(fetchDailyTopDonators, 5000);
                 }
             }
             
@@ -62,11 +62,27 @@
                 `).join('');
             }
             
-            // NOTE: Мы не используем WebSocket для этого виджета, так как данные меняются редко 
-            // и проще обновить их через API (как в оригинальной структуре).
-            // Добавляем повторное обновление для симуляции реального времени
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'full_update') {
+                    // Принудительно обновляем данные при любом донате
+                    fetchDailyTopDonators();
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(() => {
+                    const newWs = new WebSocket(ws.url);
+                    newWs.onmessage = ws.onmessage;
+                    newWs.onclose = ws.onclose;
+                }, 3000);
+            };
+
+            // Initial load
             fetchDailyTopDonators();
-            setInterval(fetchDailyTopDonators, 30000); // Обновляем каждые 30 секунд
         });
     </script>
 </body>

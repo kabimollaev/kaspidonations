@@ -6,7 +6,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
     <div class="widget-container">
@@ -19,7 +19,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const listElement = document.getElementById('donators-list');
-            let currentUser = null; // Store user for API requests
+            const user_id = "{{ user_id }}";
 
             function escapeHtml(unsafe) {
                 return (unsafe || "").toString()
@@ -32,16 +32,18 @@
             
             async function fetchMonthlyTopDonators() {
                 try {
-                    // API endpoint is now relative
-                    const response = await fetch(`/api/get_monthly_top_donators`);
+                    // ИСПРАВЛЕНИЕ: Используем user_id в URL для упрощенной аутентификации
+                    const response = await fetch(`/api/get_monthly_top_donators?user_id=${user_id}`);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     const data = await response.json();
-                    updateList(data);
+                    updateList(data.top_donators_month);
                 } catch (error) {
-                    console.error("Ошибка при получении данных Top Donators Month:", error);
+                    console.error("Ошибка при получении данных:", error);
                     listElement.innerHTML = '<p style="text-align: center; color: #dc3545;">Ошибка загрузки данных.</p>';
+                    // Повторная попытка через 5 секунд
+                    setTimeout(fetchMonthlyTopDonators, 5000);
                 }
             }
             
@@ -61,12 +63,10 @@
             }
 
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const user_id = "{{ user_id }}";
             const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
 
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                // We update the list on any full_update which happens after a donation
                 if (message.type === 'full_update') {
                     fetchMonthlyTopDonators();
                 }
@@ -74,7 +74,6 @@
 
             ws.onclose = () => {
                 setTimeout(() => {
-                    // Re-establish connection
                     const newWs = new WebSocket(ws.url);
                     newWs.onmessage = ws.onmessage;
                     newWs.onclose = ws.onclose;

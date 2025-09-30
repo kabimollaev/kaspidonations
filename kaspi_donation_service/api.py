@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, g, request
-from . import db
+from . import db, PHONE_STATUS
 from .models import Donation
 from .utils import api_login_required, broadcast_to_user, get_full_update_message
 import time
@@ -163,3 +163,4 @@ def get_monthly_top_donators():
     formatted_list = [{'name': name, 'amount': amount} for name, amount in sorted_top]
     
     return jsonify({'top_donators_month': formatted_list})
+
