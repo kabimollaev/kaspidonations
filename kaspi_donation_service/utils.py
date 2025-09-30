@@ -7,6 +7,8 @@ from .models import User, Donation
 
 def check_user_status(user):
     """Проверяет, активен ли пользователь."""
+    if not user:
+        return False, 'Пользователь не найден.'
     if user.role == 'admin' or user.status == 'active':
         return True, None
     return False, 'Аккаунт неактивен. Пожалуйста, обратитесь к администратору для активации.'
@@ -16,12 +18,14 @@ def api_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = None
+        
         if current_user.is_authenticated:
             user = current_user
         else:
-            api_key = request.headers.get('X-API-Key')
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
             if not api_key:
                 return jsonify({'error': 'Доступ запрещен. Требуется аутентификация.'}), 401
+            
             user = User.query.filter_by(api_key=api_key).first()
             if not user:
                 return jsonify({'error': 'Неверный API-ключ.'}), 403
@@ -45,15 +49,22 @@ def broadcast_to_user(user_id, message_data):
                 clients[user_id].remove(ws)
 
 def get_full_update_message(user_id):
-    """Собирает полное состояние данных для пользователя."""
+    """Собирает полное состояние данных для пользователя, включая предрасчитанные топы."""
     user = db.session.get(User, user_id)
     if not user: return {}
 
-    donations = user.donations.order_by(Donation.timestamp.desc()).all()
+    # --- Эффективное получение данных ---
+    donations = user.donations.order_by(Donation.timestamp.desc()).limit(20).all() # Только последние 20 для истории
     goal = user.goal
     settings = user.settings
     stats = user.get_donation_stats()
+    
+    # --- Предрасчет топов ---
+    top_donators_all = user.get_top_donators('all')
+    top_donators_month = user.get_top_donators('month')
+    top_donators_day = user.get_top_donators('day')
 
+    # --- Формирование ответа ---
     donations_list = [{'id': d.id, 'name': d.name, 'amount': d.amount, 'message': d.message, 'timestamp': d.timestamp.isoformat()} for d in donations]
     goal_data = {'title': goal.title, 'current': goal.current_amount, 'target': goal.target_amount} if goal else {}
     
@@ -71,5 +82,12 @@ def get_full_update_message(user_id):
         "goal": goal_data, 
         "settings": settings_data, 
         "phone_status": phone_status_data,
-        "stats": stats
+        "stats": stats,
+        # Добавляем готовые топы в ответ
+        "top_donators": {
+            "all": [{'name': name, 'amount': amount} for name, amount in top_donators_all],
+            "month": [{'name': name, 'amount': amount} for name, amount in top_donators_month],
+            "day": [{'name': name, 'amount': amount} for name, amount in top_donators_day]
+        }
     }
+

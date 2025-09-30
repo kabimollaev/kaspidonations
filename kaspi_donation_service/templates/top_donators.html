@@ -1,78 +1,56 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Топ донатеров</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-</head>
-<body>
-    <div class="widget-container">
-        <h3 class="widget-title">Топ за все время</h3>
-        <div id="donators-list">
-            <p style="text-align: center; color: #A0AEC0;">Загрузка...</p>
-        </div>
-    </div>
+{% extends "widget_base.html" %}
+{% block title %}Топ за Все время{% endblock %}
+{% block widget_title %}Топ за Все время{% endblock %}
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const listElement = document.getElementById('donators-list');
+{% block content %}
+<div id="donators-list">
+    <p style="text-align: center; color: var(--text-muted);">Загрузка...</p>
+</div>
+{% endblock %}
 
-            function updateList(donations) {
-                const topDonators = donations.reduce((acc, d) => {
-                    acc[d.name] = (acc[d.name] || 0) + d.amount;
-                    return acc;
-                }, {});
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const listElement = document.getElementById('donators-list');
+        const userId = "{{ user.id }}";
+        const apiKey = "{{ user.api_key }}";
 
-                const sorted = Object.entries(topDonators)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 10);
-
-                if (sorted.length === 0) {
-                    listElement.innerHTML = '<p style="text-align: center; color: #A0AEC0;">Донатов пока нет.</p>';
-                    return;
-                }
-                
-                listElement.innerHTML = sorted.map(([name, amount], index) => `
-                    <div class="donator-item">
-                        <span class="donator-rank">#${index + 1}</span>
-                        <span class="donator-name">${escapeHtml(name)}</span>
-                        <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
-                    </div>
-                `).join('');
+        function updateList(topDonators) {
+            if (!topDonators || topDonators.length === 0) {
+                listElement.innerHTML = '<p style="text-align: center; color: var(--text-muted);">Донатов пока нет.</p>';
+                return;
             }
-
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const user_id = "{{ user_id }}";
-            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
             
+            listElement.innerHTML = topDonators.map((d, index) => `
+                <div class="donator-item" style="animation-delay: ${index * 100}ms">
+                    <span class="donator-rank">#${index + 1}</span>
+                    <span class="donator-name">${escapeHtml(d.name)}</span>
+                    <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
+                </div>
+            `).join('');
+        }
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}&api_key=${apiKey}`;
+        
+        function connect() {
+            const ws = new WebSocket(wsUrl);
+
             ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'full_update') {
-                    updateList(msg.data.donations);
+                const message = JSON.parse(event.data);
+                if (message.type === 'full_update') {
+                    updateTheme(message.data.settings.widget_theme);
+                    // ИСПРАВЛЕНИЕ: Берем готовый список из 'top_donators.all'
+                    updateList(message.data.top_donators.all);
                 }
             };
-            
-            ws.onclose = () => {
-                setTimeout(() => {
-                    const newWs = new WebSocket(`${wsProtocol}//${window.location.host}/ws?user_id=${user_id}`);
-                    newWs.onmessage = ws.onmessage;
-                    newWs.onclose = ws.onclose;
-                }, 3000);
-            };
-            
-            function escapeHtml(unsafe) {
-                return (unsafe || "").toString()
-                     .replace(/&/g, "&amp;")
-                     .replace(/</g, "&lt;")
-                     .replace(/>/g, "&gt;")
-                     .replace(/"/g, "&quot;")
-                     .replace(/'/g, "&#039;");
-            }
-        });
-    </script>
-</body>
-</html>
 
+            ws.onclose = () => {
+                setTimeout(connect, 3000);
+            };
+        }
+
+        connect();
+    });
+</script>
+{% endblock %}

@@ -15,35 +15,17 @@
         const userId = "{{ user.id }}";
         const apiKey = "{{ user.api_key }}";
 
-        function updateList(donations) {
-            // ФИЛЬТРАЦИЯ НА СТОРОНЕ КЛИЕНТА
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const dailyDonations = donations.filter(d => {
-                const donationDate = new Date(d.timestamp);
-                return donationDate >= today;
-            });
-
-            const topDonators = dailyDonations.reduce((acc, d) => {
-                acc[d.name] = (acc[d.name] || 0) + d.amount;
-                return acc;
-            }, {});
-
-            const sorted = Object.entries(topDonators)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 10);
-
-            if (sorted.length === 0) {
+        function updateList(topDonators) {
+            if (!topDonators || topDonators.length === 0) {
                 listElement.innerHTML = '<p style="text-align: center; color: var(--text-muted);">Донатов сегодня пока нет.</p>';
                 return;
             }
             
-            listElement.innerHTML = sorted.map(([name, amount], index) => `
+            listElement.innerHTML = topDonators.map((d, index) => `
                 <div class="donator-item" style="animation-delay: ${index * 100}ms">
                     <span class="donator-rank">#${index + 1}</span>
-                    <span class="donator-name">${escapeHtml(name)}</span>
-                    <span class="donator-amount">${amount.toLocaleString('ru-RU')} ₸</span>
+                    <span class="donator-name">${escapeHtml(d.name)}</span>
+                    <span class="donator-amount">${d.amount.toLocaleString('ru-RU')} ₸</span>
                 </div>
             `).join('');
         }
@@ -58,7 +40,8 @@
                 const message = JSON.parse(event.data);
                 if (message.type === 'full_update') {
                     updateTheme(message.data.settings.widget_theme);
-                    updateList(message.data.donations);
+                    // ИСПРАВЛЕНИЕ: Берем готовый список из 'top_donators.day'
+                    updateList(message.data.top_donators.day);
                 }
             };
 
