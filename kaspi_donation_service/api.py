@@ -132,10 +132,7 @@ def update_phone_status():
     broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
     return jsonify({'status': 'success'})
 
-# УДАЛЕНО: Больше не нужны, так как логика перенесена на клиент
-# @bp.route('/get_daily_top_donators', methods=['GET'])
-# ...
-
-# @bp.route('/get_monthly_top_donators', methods=['GET'])
-# ...
+# УДАЛЕНО: Эти маршруты больше не нужны, так как вся логика
+# по фильтрации топов перенесена на сторону клиента (в сами виджеты)
+# для лучшей совместимости с OBS/TikTok Live Studio.
 

@@ -12,8 +12,8 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const listElement = document.getElementById('donators-list');
-        const userId = "{{ user_id }}";
-        const apiKey = "{{ api_key }}";
+        const userId = "{{ user.id }}";
+        const apiKey = "{{ user.api_key }}";
 
         function updateList(donations) {
             // ФИЛЬТРАЦИЯ НА СТОРОНЕ КЛИЕНТА
