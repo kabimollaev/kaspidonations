@@ -92,7 +92,8 @@
     <img id="preload-gif" style="display: none;" src="{{ url_for('static', filename='media/alert.gif') }}" alt="Preload GIF">
     
     <!-- Скрытая кнопка для обхода политики автовоспроизведения в OBS/TikTok Live -->
-    <button id="audio-init-btn" style="position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;"></button>
+    <!-- УДАЛЕНО: Кнопка и связанные с ней обработчики удалены, т.к. могут вызывать ошибки инициализации -->
+    <!-- <button id="audio-init-btn" style="position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;"></button> -->
 
     <div id="alert-container" class="alert-container"></div>
     <script>
@@ -100,46 +101,30 @@
         let alertQueue = [];
         let isShowingAlert = false;
         let currentSettings = {};
-        let audioInitialized = false; // Флаг для отслеживания инициализации звука
 
         const alertContainer = document.getElementById('alert-container');
-        const audioInitBtn = document.getElementById('audio-init-btn');
+        // const audioInitBtn = document.getElementById('audio-init-btn'); // УДАЛЕНО
         const ALERT_DURATION = 8000;
         const audioPlayer = new Audio('{{ url_for("static", filename="media/alert.mp3") }}'); 
         audioPlayer.load(); 
+        
+        // Флаг audioInitialized и функция initializeAudioContext удалены.
+        // Мы полагаемся на прямое воспроизведение и обработку ошибок.
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-
-        // Функция для обхода блокировки автовоспроизведения
-        function initializeAudioContext() {
-            if (audioInitialized) return;
-            // Пробуем воспроизвести пустой звук или инициировать контекст
-            audioPlayer.play().then(() => {
-                audioPlayer.pause();
-                audioPlayer.currentTime = 0;
-                audioInitialized = true;
-                console.log("Audio Context initialized successfully.");
-            }).catch(e => {
-                console.warn("Audio Context initialization failed (blocked by browser):", e);
-                // Это может произойти, если пользователь не кликнул по виджету.
-                // В OBS это обычно решается, если пользователь кликнет на сам источник.
-            });
-        }
-
-        // Привязываем инициализацию к скрытой кнопке (триггер по клику)
-        // OBS/TikTok Live Studio могут "имитировать" клик или разрешить его при первом добавлении источника.
-        audioInitBtn.addEventListener('click', initializeAudioContext);
-        // Также пробуем инициализировать сразу после загрузки документа
-        document.addEventListener('DOMContentLoaded', initializeAudioContext);
         
+        // Удалены initializeAudioContext и привязки к ней.
+        // document.addEventListener('DOMContentLoaded', initializeAudioContext);
 
         function connectWebSocket() {
             const userId = "{{ user.id }}";
+            // ИСПРАВЛЕНО: Явно добавляем api_key в URL для надежной аутентификации в OBS/ТТЛС
+            const apiKey = "{{ user.api_key }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}&api_key=${apiKey}`;
             
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.close();
@@ -149,6 +134,9 @@
             
             ws.onopen = () => {
                 console.log("WebSocket connected.");
+                // Имитируем клик по скрытой кнопке, чтобы обойти политику автовоспроизведения
+                // Т.к. кнопки больше нет, пробуем чистый вызов.
+                // audioInitBtn.click(); // УДАЛЕНО
                 setTimeout(processQueue, 500); 
             };
             
@@ -214,7 +202,6 @@
             // Воспроизводим звук
             audioPlayer.currentTime = 0; 
             audioPlayer.play().catch(e => {
-                // Это сработает, если браузер заблокировал автовоспроизведение
                 console.error("Audio playback failed (Autoplay blocked):", e);
                 // Продолжаем показывать визуал, даже если звук не сработал
             });
