@@ -88,6 +88,9 @@
     </style>
 </head>
 <body>
+    <!-- Предварительная загрузка медиа -->
+    <img id="preload-gif" style="display: none;" src="{{ url_for('static', filename='media/alert.gif') }}" alt="Preload GIF">
+    
     <div id="alert-container" class="alert-container"></div>
     <script>
         let ws;
@@ -97,7 +100,8 @@
 
         const alertContainer = document.getElementById('alert-container');
         const ALERT_DURATION = 8000;
-        const audioPlayer = new Audio();
+        const audioPlayer = new Audio('{{ url_for("static", filename="media/alert.mp3") }}'); // Предварительно устанавливаем источник
+        audioPlayer.load(); // Предварительная загрузка аудио
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
@@ -105,12 +109,10 @@
         }
 
         function connectWebSocket() {
-            // ИСПРАВЛЕНО: Используем user.id, который гарантированно передается
             const userId = "{{ user.id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
             
-            // Если соединение уже открыто, закрываем его перед созданием нового
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.close();
             }
@@ -119,7 +121,6 @@
             
             ws.onopen = () => {
                 console.log("WebSocket connected.");
-                // Часто OBS/TikTok Live нужно небольшую задержку после открытия
                 setTimeout(processQueue, 500); 
             };
             
@@ -133,6 +134,12 @@
                     }
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
+                    // Обновляем источник звука, если настройки изменились
+                    const newSoundUrl = currentSettings.sound_url || '{{ url_for("static", filename="media/alert.mp3") }}';
+                    if (audioPlayer.src !== newSoundUrl) {
+                        audioPlayer.src = newSoundUrl;
+                        audioPlayer.load();
+                    }
                 }
             };
             
@@ -141,10 +148,8 @@
                 setTimeout(connectWebSocket, 3000);
             };
             
-            // ИСПРАВЛЕНО: Обработка ошибок для принудительного переподключения
             ws.onerror = (error) => {
                 console.error('WebSocket error detected. Closing connection:', error);
-                // Принудительное закрытие вызовет onclose и запустит переподключение
                 if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
                     ws.close();
                 }
@@ -163,10 +168,9 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            // Используем GIF по умолчанию, если настройки не загружены
-            const alertUrl = (currentSettings.alert_url || '{{ url_for("static", filename="media/alert.gif") }}');
-            // Используем звук по умолчанию
-            const soundUrl = (currentSettings.sound_url || '{{ url_for("static", filename="media/alert.mp3") }}');
+            
+            // Используем URL из настроек или URL предварительно загруженного GIF
+            const alertUrl = currentSettings.alert_url || document.getElementById('preload-gif').src;
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -180,11 +184,11 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим звук
-            if (currentSettings.sound_url) {
-                audioPlayer.src = soundUrl;
-                audioPlayer.play().catch(e => console.error("Audio play error:", e));
-            }
+            // Воспроизводим звук (он уже должен быть загружен)
+            // ИСПРАВЛЕНО: Устанавливаем currentTime в 0 перед воспроизведением
+            audioPlayer.currentTime = 0; 
+            audioPlayer.play().catch(e => console.error("Audio play error:", e));
+            
 
             // Показываем визуальное оповещение
             setTimeout(() => alertBox.classList.add('visible'), 50);
