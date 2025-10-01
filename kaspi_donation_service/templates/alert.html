@@ -91,10 +91,6 @@
     <!-- Предварительная загрузка медиа -->
     <img id="preload-gif" style="display: none;" src="{{ url_for('static', filename='media/alert.gif') }}" alt="Preload GIF">
     
-    <!-- Скрытая кнопка для обхода политики автовоспроизведения в OBS/TikTok Live -->
-    <!-- УДАЛЕНО: Кнопка и связанные с ней обработчики удалены, т.к. могут вызывать ошибки инициализации -->
-    <!-- <button id="audio-init-btn" style="position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;"></button> -->
-
     <div id="alert-container" class="alert-container"></div>
     <script>
         let ws;
@@ -103,27 +99,20 @@
         let currentSettings = {};
 
         const alertContainer = document.getElementById('alert-container');
-        // const audioInitBtn = document.getElementById('audio-init-btn'); // УДАЛЕНО
         const ALERT_DURATION = 8000;
         const audioPlayer = new Audio('{{ url_for("static", filename="media/alert.mp3") }}'); 
         audioPlayer.load(); 
-        
-        // Флаг audioInitialized и функция initializeAudioContext удалены.
-        // Мы полагаемся на прямое воспроизведение и обработку ошибок.
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-        
-        // Удалены initializeAudioContext и привязки к ней.
-        // document.addEventListener('DOMContentLoaded', initializeAudioContext);
 
         function connectWebSocket() {
             const userId = "{{ user.id }}";
-            // ИСПРАВЛЕНО: Явно добавляем api_key в URL для надежной аутентификации в OBS/ТТЛС
             const apiKey = "{{ user.api_key }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Используем явную аутентификацию по API-ключу
             const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}&api_key=${apiKey}`;
             
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -134,9 +123,6 @@
             
             ws.onopen = () => {
                 console.log("WebSocket connected.");
-                // Имитируем клик по скрытой кнопке, чтобы обойти политику автовоспроизведения
-                // Т.к. кнопки больше нет, пробуем чистый вызов.
-                // audioInitBtn.click(); // УДАЛЕНО
                 setTimeout(processQueue, 500); 
             };
             
@@ -150,7 +136,6 @@
                     }
                 } else if (message.type === 'full_update') {
                     currentSettings = message.data.settings || {};
-                    // Обновляем источник звука, если настройки изменились
                     const newSoundUrl = currentSettings.sound_url || '{{ url_for("static", filename="media/alert.mp3") }}';
                     if (audioPlayer.src.split('?')[0] !== newSoundUrl.split('?')[0]) {
                         audioPlayer.src = newSoundUrl;
@@ -184,9 +169,9 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            
             const alertUrl = currentSettings.alert_url || document.getElementById('preload-gif').src;
 
+            // 1. Создаем и вставляем визуал
             alertContainer.innerHTML = `
                 <div class="alert-box">
                     <img src="${alertUrl}" class="alert-gif" alt="Donation animation">
@@ -199,24 +184,25 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим звук
-            audioPlayer.currentTime = 0; 
-            audioPlayer.play().catch(e => {
-                console.error("Audio playback failed (Autoplay blocked):", e);
-                // Продолжаем показывать визуал, даже если звук не сработал
-            });
-            
-
-            // Показываем визуальное оповещение
+            // 2. Инициализируем показ визуала немедленно
             setTimeout(() => alertBox.classList.add('visible'), 50);
 
-            // Прячем оповещение и разрешаем следующее
+            // 3. Запускаем аудио в полностью отдельном потоке (Promise.resolve)
+            // Это гарантирует, что даже если аудио будет заблокировано, визуал сработает.
+            Promise.resolve().then(() => {
+                audioPlayer.currentTime = 0; 
+                return audioPlayer.play();
+            }).catch(e => {
+                console.error("Audio playback failed (Autoplay blocked):", e);
+            });
+            
+            // 4. Устанавливаем таймер для скрытия
             setTimeout(hideAlert, ALERT_DURATION);
         }
         
         function hideAlert() {
             const alertBox = alertContainer.querySelector('.alert-box');
-            // Останавливаем звук
+            
             audioPlayer.pause();
             audioPlayer.currentTime = 0; 
 
@@ -225,7 +211,7 @@
                 setTimeout(() => {
                      alertContainer.innerHTML = '';
                      isShowingAlert = false;
-                     processQueue(); // Проверяем, есть ли еще алерты в очереди
+                     processQueue();
                 }, 500);
             } else {
                 isShowingAlert = false;
@@ -237,3 +223,4 @@
     </script>
 </body>
 </html>
+
