@@ -18,7 +18,8 @@
             --message-color: #A0AEC0;
         }
         body {
-            background-color: transparent !important;
+            /* Важно: прозрачный фон для OBS/TikTok Live */
+            background-color: transparent !important; 
             font-family: var(--widget-font);
             overflow: hidden;
             margin: 0;
@@ -98,14 +99,29 @@
         const ALERT_DURATION = 8000;
         const audioPlayer = new Audio();
 
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return '';
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
         function connectWebSocket() {
-            const userId = "{{ user_id }}";
+            // ИСПРАВЛЕНО: Используем user.id, который гарантированно передается
+            const userId = "{{ user.id }}";
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws?user_id=${userId}`;
             
+            // Если соединение уже открыто, закрываем его перед созданием нового
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+
             ws = new WebSocket(wsUrl);
             
-            ws.onopen = () => console.log("WebSocket connected.");
+            ws.onopen = () => {
+                console.log("WebSocket connected.");
+                // Часто OBS/TikTok Live нужно небольшую задержку после открытия
+                setTimeout(processQueue, 500); 
+            };
             
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
@@ -120,8 +136,19 @@
                 }
             };
             
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
-            ws.onerror = (error) => ws.close();
+            ws.onclose = () => {
+                console.warn("WebSocket closed. Reconnecting in 3s...");
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            // ИСПРАВЛЕНО: Обработка ошибок для принудительного переподключения
+            ws.onerror = (error) => {
+                console.error('WebSocket error detected. Closing connection:', error);
+                // Принудительное закрытие вызовет onclose и запустит переподключение
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            };
         }
 
         function processQueue() {
@@ -136,7 +163,10 @@
         function showAlert(data) {
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
-            const alertUrl = currentSettings.alert_url || '/static/media/alert.gif';
+            // Используем GIF по умолчанию, если настройки не загружены
+            const alertUrl = (currentSettings.alert_url || '{{ url_for("static", filename="media/alert.gif") }}');
+            // Используем звук по умолчанию
+            const soundUrl = (currentSettings.sound_url || '{{ url_for("static", filename="media/alert.mp3") }}');
 
             alertContainer.innerHTML = `
                 <div class="alert-box">
@@ -152,7 +182,7 @@
             
             // Воспроизводим звук
             if (currentSettings.sound_url) {
-                audioPlayer.src = currentSettings.sound_url;
+                audioPlayer.src = soundUrl;
                 audioPlayer.play().catch(e => console.error("Audio play error:", e));
             }
 
@@ -165,6 +195,10 @@
         
         function hideAlert() {
             const alertBox = alertContainer.querySelector('.alert-box');
+            // Останавливаем звук
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0; 
+
             if (alertBox) {
                 alertBox.classList.remove('visible');
                 setTimeout(() => {
@@ -177,14 +211,8 @@
                 processQueue();
             }
         }
-
-        function escapeHtml(unsafe) {
-            if (typeof unsafe !== 'string') return '';
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-        }
         
         connectWebSocket();
     </script>
 </body>
 </html>
-
