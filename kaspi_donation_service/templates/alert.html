@@ -91,22 +91,50 @@
     <!-- Предварительная загрузка медиа -->
     <img id="preload-gif" style="display: none;" src="{{ url_for('static', filename='media/alert.gif') }}" alt="Preload GIF">
     
+    <!-- Скрытая кнопка для обхода политики автовоспроизведения в OBS/TikTok Live -->
+    <button id="audio-init-btn" style="position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;"></button>
+
     <div id="alert-container" class="alert-container"></div>
     <script>
         let ws;
         let alertQueue = [];
         let isShowingAlert = false;
         let currentSettings = {};
+        let audioInitialized = false; // Флаг для отслеживания инициализации звука
 
         const alertContainer = document.getElementById('alert-container');
+        const audioInitBtn = document.getElementById('audio-init-btn');
         const ALERT_DURATION = 8000;
-        const audioPlayer = new Audio('{{ url_for("static", filename="media/alert.mp3") }}'); // Предварительно устанавливаем источник
-        audioPlayer.load(); // Предварительная загрузка аудио
+        const audioPlayer = new Audio('{{ url_for("static", filename="media/alert.mp3") }}'); 
+        audioPlayer.load(); 
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
+
+        // Функция для обхода блокировки автовоспроизведения
+        function initializeAudioContext() {
+            if (audioInitialized) return;
+            // Пробуем воспроизвести пустой звук или инициировать контекст
+            audioPlayer.play().then(() => {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                audioInitialized = true;
+                console.log("Audio Context initialized successfully.");
+            }).catch(e => {
+                console.warn("Audio Context initialization failed (blocked by browser):", e);
+                // Это может произойти, если пользователь не кликнул по виджету.
+                // В OBS это обычно решается, если пользователь кликнет на сам источник.
+            });
+        }
+
+        // Привязываем инициализацию к скрытой кнопке (триггер по клику)
+        // OBS/TikTok Live Studio могут "имитировать" клик или разрешить его при первом добавлении источника.
+        audioInitBtn.addEventListener('click', initializeAudioContext);
+        // Также пробуем инициализировать сразу после загрузки документа
+        document.addEventListener('DOMContentLoaded', initializeAudioContext);
+        
 
         function connectWebSocket() {
             const userId = "{{ user.id }}";
@@ -136,7 +164,7 @@
                     currentSettings = message.data.settings || {};
                     // Обновляем источник звука, если настройки изменились
                     const newSoundUrl = currentSettings.sound_url || '{{ url_for("static", filename="media/alert.mp3") }}';
-                    if (audioPlayer.src !== newSoundUrl) {
+                    if (audioPlayer.src.split('?')[0] !== newSoundUrl.split('?')[0]) {
                         audioPlayer.src = newSoundUrl;
                         audioPlayer.load();
                     }
@@ -169,7 +197,6 @@
             const amountFormatted = data.amount.toLocaleString('ru-RU');
             const messageText = data.message ? escapeHtml(data.message) : '';
             
-            // Используем URL из настроек или URL предварительно загруженного GIF
             const alertUrl = currentSettings.alert_url || document.getElementById('preload-gif').src;
 
             alertContainer.innerHTML = `
@@ -184,10 +211,13 @@
                 </div>`;
             const alertBox = alertContainer.querySelector('.alert-box');
             
-            // Воспроизводим звук (он уже должен быть загружен)
-            // ИСПРАВЛЕНО: Устанавливаем currentTime в 0 перед воспроизведением
+            // Воспроизводим звук
             audioPlayer.currentTime = 0; 
-            audioPlayer.play().catch(e => console.error("Audio play error:", e));
+            audioPlayer.play().catch(e => {
+                // Это сработает, если браузер заблокировал автовоспроизведение
+                console.error("Audio playback failed (Autoplay blocked):", e);
+                // Продолжаем показывать визуал, даже если звук не сработал
+            });
             
 
             // Показываем визуальное оповещение
