@@ -54,4 +54,96 @@ def submit_donation():
     return jsonify({'status': 'success'})
 
 @bp.route('/update_goal', methods=['POST'])
-# УДАЛЕНО: строка 57: # ... (остальная часть api.py без изменений)
+@api_login_required
+def update_goal():
+    user = g.user
+    data = request.json
+    if user.goal:
+        user.goal.title = data.get('title', user.goal.title)
+        user.goal.target_amount = float(data.get('target', user.goal.target_amount))
+        db.session.commit()
+        broadcast_to_user(user.id, {"type": "full_update", "data": get_full_update_message(user.id)})
+    return jsonify({'status': 'success'})
+
+@bp.route('/update_settings', methods=['POST'])
+@api_login_required
+def update_settings():
+    user = g.user
+    data = request.json
+    if user.settings:
+        user.settings.min_amount = float(data.get('min_amount', user.settings.min_amount))
+        user.settings.widget_theme = data.get('widget_theme', user.settings.widget_theme)
+        db.session.commit()
+        broadcast_to_user(user.id, {"type": "full_update", "data": get_full_update_message(user.id)})
+    return jsonify({'status': 'success'})
+
+@bp.route('/add_manual_donation', methods=['POST'])
+@api_login_required
+def add_manual_donation():
+    return submit_donation()
+
+@bp.route('/reset_donations', methods=['POST'])
+@api_login_required
+def reset_donations():
+    user = g.user
+    user.donations.delete()
+    if user.goal:
+        user.goal.current_amount = 0
+    db.session.commit()
+    broadcast_to_user(user.id, {"type": "full_update", "data": get_full_update_message(user.id)})
+    return jsonify({'status': 'success'})
+
+@bp.route('/delete_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
+def delete_donation(donation_id):
+    user = g.user
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != user.id:
+        return jsonify({'error': 'Донат не найден'}), 404
+    if user.goal:
+        user.goal.current_amount -= donation.amount
+    db.session.delete(donation)
+    db.session.commit()
+    broadcast_to_user(user.id, {"type": "full_update", "data": get_full_update_message(user.id)})
+    return jsonify({'status': 'success'})
+
+@bp.route('/replay_donation/<int:donation_id>', methods=['POST'])
+@api_login_required
+def replay_donation(donation_id):
+    user = g.user
+    donation = db.session.get(Donation, donation_id)
+    if not donation or donation.user_id != user.id:
+        return jsonify({'error': 'Донат не найден'}), 404
+    
+    donation_data = {'id': donation.id, 'name': donation.name, 'amount': donation.amount, 'message': donation.message}
+    alert_message = {"type": "show_alert", "data": donation_data}
+    broadcast_to_user(user.id, alert_message)
+    
+    return jsonify({'status': 'success'})
+
+@bp.route('/test_donation', methods=['POST'])
+@api_login_required
+def test_donation_api():
+    user = g.user
+    test_donation_data = {'id': f"test_{int(time.time())}",'name': 'Тестер','amount': 100,'message': 'Это тестовый донат!'}
+    
+    alert_message = {"type": "show_alert", "data": test_donation_data}
+    broadcast_to_user(user.id, alert_message)
+    
+    return jsonify({'status': 'success'})
+
+@bp.route('/get_phone_status', methods=['GET'])
+@api_login_required
+def get_phone_status():
+    from . import PHONE_STATUS
+    user = g.user
+    return jsonify(PHONE_STATUS.get(user.id, {"connected": False, "message": "Нет данных"}))
+
+@bp.route('/update_phone_status', methods=['POST'])
+@api_login_required
+def update_phone_status():
+    from . import PHONE_STATUS
+    user = g.user
+    PHONE_STATUS[user.id] = request.json
+    broadcast_to_user(user.id, {"type": "phone_status_update", "data": PHONE_STATUS[user.id]})
+    return jsonify({'status': 'success'})
