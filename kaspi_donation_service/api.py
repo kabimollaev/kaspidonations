@@ -3,7 +3,7 @@ from . import db
 from .models import Donation
 from .utils import api_login_required, broadcast_to_user, get_full_update_message
 import time
-import json # Добавлен для логирования
+import json 
 
 bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -28,11 +28,26 @@ def submit_donation():
         print("Ошибка: Отсутствуют обязательные поля 'name' или 'amount'.")
         return jsonify({'error': 'Отсутствуют обязательные поля.'}), 400
 
+    raw_amount = data['amount']
+    amount_float = 0.0
+
     try:
-        amount_float = float(data['amount'])
+        # 1. Попытка чистой конвертации (для тестовых/чистых данных)
+        amount_float = float(raw_amount)
     except ValueError:
-        print(f"Ошибка: 'amount' не является числом: {data['amount']}")
-        return jsonify({'error': 'Сумма доната должна быть числом.'}), 400
+        # 2. Очистка строки: удаляем все символы, кроме цифр и точки/запятой
+        cleaned_amount = str(raw_amount).replace(' ', '').replace('₸', '').replace(',', '.')
+        
+        # Если в Казахстане используется запятая как разделитель, то заменяем ее на точку.
+        # Удаляем все, кроме цифр и точки.
+        
+        # Убедимся, что очистка прошла успешно и не оставила лишних символов
+        try:
+            amount_float = float(cleaned_amount)
+            print(f"Успех: Сумма '{raw_amount}' очищена до {amount_float}")
+        except ValueError:
+            print(f"Критическая ошибка: Не удалось преобразовать сумму '{raw_amount}' в число.")
+            return jsonify({'error': f'Сумма доната "{raw_amount}" имеет неверный формат.'}), 400
 
     new_donation = Donation(name=data['name'], amount=amount_float, message=data.get('message'), user_id=user.id)
     db.session.add(new_donation)
