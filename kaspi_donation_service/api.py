@@ -54,4 +54,4 @@ def submit_donation():
     return jsonify({'status': 'success'})
 
 @bp.route('/update_goal', methods=['POST'])
-# ... (остальная часть api.py без изменений)
+# УДАЛЕНО: строка 57: # ... (остальная часть api.py без изменений)
