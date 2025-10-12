@@ -71,6 +71,7 @@ def create_app():
 
     # --- Инициализация моделей и создание таблиц ---
     with app.app_context():
+        # Эти строки были сдвинуты вправо (добавлен отступ)
         from . import models
         db.create_all()
 
