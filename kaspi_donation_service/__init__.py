@@ -64,8 +64,8 @@ def create_app():
     # --- Регистрация WebSocket маршрута ---
     from . import sockets
 
-        with app.app_context():
-        from . import models
-        db.create_all()
+    with app.app_context():
+    from . import models
+    db.create_all()
 
     return app
