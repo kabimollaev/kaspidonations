@@ -16,6 +16,7 @@ migrate = Migrate()
 clients = {}
 PHONE_STATUS = {}
 
+
 def create_app():
     """
     Создает и конфигурирует экземпляр приложения Flask (App Factory).
@@ -28,7 +29,10 @@ def create_app():
     if not app.config['SECRET_KEY']:
         raise ValueError("Необходимо установить переменную окружения SECRET_KEY")
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{basedir / 'instance' / 'database.db'}")
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+        'DATABASE_URL',
+        f"sqlite:///{basedir / 'instance' / 'database.db'}"
+    )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Убедимся, что папка instance существует
@@ -42,8 +46,9 @@ def create_app():
 
     # Настройка LoginManager
     login_manager.login_view = 'auth.login'
-    
+
     from .models import User
+
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(User, int(user_id))
@@ -54,7 +59,7 @@ def create_app():
     from .admin import bp as admin_bp
     from .api import bp as api_bp
     from .widgets import bp as widgets_bp
-    
+
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -64,8 +69,9 @@ def create_app():
     # --- Регистрация WebSocket маршрута ---
     from . import sockets
 
+    # --- Инициализация моделей и создание таблиц ---
     with app.app_context():
-    from . import models
-    db.create_all()
+        from . import models
+        db.create_all()
 
     return app
